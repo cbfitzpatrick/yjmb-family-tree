@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Preparing YJMB Family Tree</title>
+  <link rel="stylesheet" href="gate.css">
+</head>
+<body class="gate-page loading-page">
+  <main class="loading-content" aria-labelledby="loading-title">
+    <h1 id="loading-title">Generating tree</h1>
+    <div class="asset-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Generating tree assets and connections">
+      <div id="asset-progress-bar" class="asset-progress-bar"></div>
+    </div>
+    <p id="asset-progress-text" class="asset-progress-text">Preparing encrypted assets…</p>
+    <p id="asset-progress-percent" class="asset-progress-percent">0%</p>
+  </main>
+  <script src="secure-data.js"></script>
+  <script>
+    'use strict';
+    const progress = document.querySelector('.asset-progress');
+    const bar = document.querySelector('#asset-progress-bar');
+    const text = document.querySelector('#asset-progress-text');
+    const percent = document.querySelector('#asset-progress-percent');
+    const update = (value, label) => {
+      const bounded = Math.max(0, Math.min(100, Math.round(value)));
+      progress.setAttribute('aria-valuenow', String(bounded));
+      bar.style.width = `${bounded}%`; percent.textContent = `${bounded}%`;
+      if (label) text.textContent = label;
+    };
+    const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    (async () => {
+      try {
+        const data = await window.YJMBSecureData.unlockFromSession(update);
+        update(76, `Generating ${data.people.length.toLocaleString()} protected card assets…`); await pause(180);
+        update(88, `Building ${data.connectors.length.toLocaleString()} family connections…`); await pause(180);
+        update(96, `Aligning ${(data.yearBands || []).length.toLocaleString()} RAT-year bands…`); await pause(150);
+        update(100, 'Tree ready.'); await pause(200);
+        const target = sessionStorage.getItem('yjmbReturnTo') || 'tree.html';
+        sessionStorage.removeItem('yjmbReturnTo');
+        window.location.replace(target);
+      } catch (error) {
+        console.error(error);
+        text.textContent = error?.code === 'AUTH_REQUIRED' ? 'Access verification required.' : `Could not unlock the tree: ${error.message}`;
+        percent.textContent = ''; bar.style.width = '0%';
+        setTimeout(() => window.location.replace('index.html'), 1000);
+      }
+    })();
+  </script>
+</body>
+</html>

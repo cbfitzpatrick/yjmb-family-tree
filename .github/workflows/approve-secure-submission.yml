@@ -1,0 +1,35 @@
+name: Approve protected YJMB submission
+
+on:
+  workflow_dispatch:
+    inputs:
+      submission_id:
+        description: 'Protected submission UUID from the review Issue'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  approve:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Move approved encrypted submission into automatic queue
+        shell: bash
+        run: |
+          id='${{ inputs.submission_id }}'
+          src=".secure_submissions/review/${id}.enc.json"
+          dst=".secure_submissions/auto/${id}.enc.json"
+          test -f "$src" || { echo "Review submission not found: $src"; exit 1; }
+          mv "$src" "$dst"
+          git config user.name "YJMB Protected Updater"
+          git config user.email "actions@users.noreply.github.com"
+          git add .secure_submissions
+          git commit -m "Approve protected YJMB submission ${id}"
+          git pull --rebase origin main
+          git push origin main

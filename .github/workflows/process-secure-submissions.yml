@@ -1,0 +1,84 @@
+name: Apply protected YJMB submissions
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.secure_submissions/auto/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: secure-yjmb-submission-updates
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout latest main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Refresh latest main
+        run: git pull --ff-only origin main
+      - name: Check queue
+        id: queue
+        shell: bash
+        run: |
+          shopt -s nullglob
+          files=(.secure_submissions/auto/*.enc.json)
+          if (( ${#files[@]} == 0 )); then echo "has_files=false" >> "$GITHUB_OUTPUT"; else echo "has_files=true" >> "$GITHUB_OUTPUT"; fi
+      - name: Set up Python
+        if: steps.queue.outputs.has_files == 'true'
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        if: steps.queue.outputs.has_files == 'true'
+        run: python -m pip install -r requirements.txt
+      - name: Decrypt protected master workbook
+        if: steps.queue.outputs.has_files == 'true'
+        env:
+          MASTER_WORKBOOK_KEY_B64: ${{ secrets.MASTER_WORKBOOK_KEY_B64 }}
+        run: python secure_workbook.py decrypt --input secure/master_workbook.enc --output "YJMB Trees.xlsx"
+      - name: Process encrypted submission queue
+        if: steps.queue.outputs.has_files == 'true'
+        env:
+          SUBMISSION_KEY_B64: ${{ secrets.SUBMISSION_KEY_B64 }}
+        run: python process_secure_queue.py --workbook "YJMB Trees.xlsx"
+      - name: Rebuild encrypted public site
+        if: steps.queue.outputs.has_files == 'true'
+        env:
+          TREE_DATA_KEY_B64: ${{ secrets.TREE_DATA_KEY_B64 }}
+        run: python fullBandTreeGenerator.py --workbook "YJMB Trees.xlsx" --output-mode giant --skip-png --skip-svg --skip-ambiguities
+      - name: Re-encrypt protected master workbook
+        if: steps.queue.outputs.has_files == 'true'
+        env:
+          MASTER_WORKBOOK_KEY_B64: ${{ secrets.MASTER_WORKBOOK_KEY_B64 }}
+        run: python secure_workbook.py encrypt --input "YJMB Trees.xlsx" --output secure/master_workbook.enc
+      - name: Remove plaintext workbook
+        if: always()
+        run: rm -f "YJMB Trees.xlsx"
+      - name: Commit protected update
+        if: steps.queue.outputs.has_files == 'true'
+        run: |
+          git config user.name "YJMB Protected Updater"
+          git config user.email "actions@users.noreply.github.com"
+          git add docs secure/master_workbook.enc .secure_submissions
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Apply protected YJMB tree submission(s)"
+          git pull --rebase origin main
+          git push origin main
+      - name: Notify administrator about conflicts
+        if: steps.queue.outputs.has_files == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python notify_review.py
+      - name: Remove queue result
+        if: always()
+        run: rm -f queue_result.json

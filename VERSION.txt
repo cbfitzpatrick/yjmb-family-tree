@@ -1,0 +1,3 @@
+YJMB full-band family tree generator
+Version 1.0
+Schema: Given/Preferred Name, Nickname, Family/Maiden Name, Married Name

@@ -1,0 +1,16 @@
+# Python environment and caches
+.venv/
+__pycache__/
+*.py[cod]
+
+# Excel temporary/backup/import files
+~$*.xlsx
+backups/
+import_reports/
+.name_resolution_cache.json
+
+# Uncomment these when the repository must not contain plaintext member data.
+# *.xlsx
+# cards/
+# trees/
+# YJMB_*Family_Trees_*.png

@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>YJMB Full Band Family Tree</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="tree-page">
+  <header class="toolbar">
+    <div class="brand-block">
+      <h1>YJMB Full Band Family Tree</h1>
+      <p id="view-description">Full-band family-tree visualizer</p>
+    </div>
+
+    <div class="search-wrap">
+      <label class="search-label" for="search">Find a person</label>
+      <input id="search" type="search" placeholder="Start typing a name…" autocomplete="off" aria-autocomplete="list" aria-controls="search-results">
+      <div id="search-results" class="search-results" role="listbox" hidden></div>
+    </div>
+
+    <div class="toolbar-actions">
+      <a class="add-yourself-link" href="add-yourself.html">Add yourself</a>
+      <button id="show-all-trees" class="secondary-button" type="button" hidden>Show full tree</button>
+      <div class="zoom-controls" aria-label="Zoom controls">
+        <button id="zoom-out" type="button" aria-label="Zoom out">−</button>
+        <span id="zoom-label">100%</span>
+        <button id="zoom-in" type="button" aria-label="Zoom in">+</button>
+        <button id="zoom-reset" type="button">Reset</button>
+      </div>
+
+      <details id="visualizer" class="visualizer-menu">
+        <summary>Visualizer</summary>
+        <div class="visualizer-panel">
+          <div class="visualizer-heading">
+            <div>
+              <strong>Sections</strong>
+              <p>Show complete family trees that contain at least one person in any checked section.</p>
+            </div>
+          </div>
+          <div class="visualizer-buttons">
+            <button id="sections-all" type="button">Select all</button>
+            <button id="sections-none" type="button">Clear</button>
+          </div>
+          <div id="section-options" class="section-options"></div>
+          <p id="filter-summary" class="filter-summary"></p>
+        </div>
+      </details>
+    </div>
+  </header>
+
+  <main>
+    <div id="status" class="status">Loading tree…</div>
+    <div id="viewport" class="viewport" hidden>
+      <div id="year-axis" class="year-axis" aria-hidden="true"></div>
+      <div id="scaled-stage">
+        <div id="stage" class="stage">
+          <div id="bands" class="bands"></div>
+          <svg id="connectors" class="connectors" aria-hidden="true"></svg>
+          <div id="cards" class="cards"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside id="details" class="details" hidden aria-label="Person details">
+    <div class="details-header">
+      <div>
+        <p class="details-kicker">Selected person</p>
+        <h2 id="details-name"></h2>
+      </div>
+      <button id="details-close" class="details-close" type="button" aria-label="Close details">×</button>
+    </div>
+
+    <div class="details-actions">
+      <button id="details-show-tree" class="primary-button" type="button">Show connected tree</button>
+      <button id="details-locate" class="secondary-button" type="button">Locate card</button>
+    </div>
+
+    <div id="details-fields" class="details-fields"></div>
+
+    <section class="relationship-section" aria-labelledby="relationship-heading">
+      <h3 id="relationship-heading">Tree relationships</h3>
+      <div id="details-relationships"></div>
+    </section>
+
+    <a id="correction-link" class="correction-link" href="correction.html">Is something incorrect? Click here to make changes.</a>
+  </aside>
+
+  <div class="bug-report-slot bug-report-slot-tree"></div>
+
+  <script src="secure-data.js"></script>
+  <script src="admin-mail.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
