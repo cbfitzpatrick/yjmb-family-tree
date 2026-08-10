@@ -43,6 +43,7 @@ from typing import Iterable, Iterator, Sequence
 from openpyxl import load_workbook
 from PIL import Image, ImageDraw, ImageFont
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from yjmb_taxonomy import leadership_icon_flags
 
 # Large full-band charts can exceed Pillow's default decompression warning size.
 Image.MAX_IMAGE_PIXELS = None
@@ -823,6 +824,30 @@ class Person:
     @property
     def card_display_name(self) -> str:
         return normalize_spaces(f"{self.card_given_name} {self.family}") or self.stable_name
+
+    def source_field_value(self, *labels: str) -> str:
+        wanted = {normalized_header(label) for label in labels}
+        for item in self.source_fields:
+            if normalized_header(item.get("label", "")) in wanted:
+                return normalize_spaces(item.get("value", ""))
+        return ""
+
+    @property
+    def leadership_icons(self) -> list[str]:
+        formal = self.source_field_value(
+            "Marching Band Leadership Role(s)",
+            "Formal Leadership Position(s)",
+            "Formal Leadership Role(s)",
+        )
+        informal = self.source_field_value(
+            "Informal Leadership Position(s)",
+            "Informal Leadership Role(s)",
+        )
+        informal_flag = self.source_field_value(
+            "Served in Informal Leadership Position",
+            "Informal Leadership",
+        )
+        return leadership_icon_flags(formal, informal, informal_flag)
 
     @property
     def year_label(self) -> str:
@@ -1786,6 +1811,98 @@ def name_lines(person: Person) -> list[str]:
     return [" ".join(words[:midpoint]), " ".join(words[midpoint:])]
 
 
+LEADERSHIP_ICON_SIZE = 15
+LEADERSHIP_ICON_MARGIN = 5
+
+
+def _icon_box(card: Image.Image, kind: str) -> tuple[int, int, int, int]:
+    size = LEADERSHIP_ICON_SIZE
+    margin = LEADERSHIP_ICON_MARGIN
+    positions = {
+        "section-leader": (margin, margin),
+        "drum-major": (card.width - margin - size, margin),
+        "rat-parent": (margin, card.height - margin - size),
+        "informal-leadership": (card.width - margin - size, card.height - margin - size),
+        # Fifth role shares the lower-right corner as an inward second badge.
+        "other-leadership": (card.width - margin - size * 2 - 4, card.height - margin - size),
+    }
+    x, y = positions[kind]
+    return x, y, x + size - 1, y + size - 1
+
+
+def _draw_section_leader(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int]) -> None:
+    x0, y0, x1, y1 = box
+    cx = (x0 + x1) // 2
+    for offset in (2, 6, 10):
+        y = y0 + offset
+        draw.line([(x0 + 2, y + 3), (cx, y), (x1 - 2, y + 3)], fill="black", width=2)
+
+
+def _draw_drum_major(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int]) -> None:
+    x0, y0, x1, y1 = box
+    draw.line([(x0 + 3, y1 - 2), (x1 - 3, y0 + 2)], fill="black", width=2)
+    draw.ellipse([x1 - 5, y0, x1 - 1, y0 + 4], outline="black", width=1)
+    draw.line([(x0 + 1, y0 + 4), (x0 + 5, y0 + 1)], fill="black", width=1)
+    draw.line([(x0 + 1, y0 + 8), (x0 + 6, y0 + 5)], fill="black", width=1)
+
+
+def _draw_informal_leadership(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int]) -> None:
+    x0, y0, x1, y1 = box
+    mid = (y0 + y1) // 2
+    draw.polygon([(x0 + 1, mid - 3), (x0 + 8, y0 + 2), (x0 + 8, y1 - 2)], outline="black")
+    draw.rectangle([x0 + 8, mid - 2, x0 + 10, mid + 2], fill="black")
+    draw.line([(x0 + 4, mid + 3), (x0 + 6, y1 - 1)], fill="black", width=2)
+    draw.line([(x0 + 11, mid - 4), (x1, mid - 6)], fill="black", width=1)
+    draw.line([(x0 + 11, mid), (x1, mid)], fill="black", width=1)
+    draw.line([(x0 + 11, mid + 4), (x1, mid + 6)], fill="black", width=1)
+
+
+def _draw_other_leadership(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int]) -> None:
+    x0, y0, x1, y1 = box
+    cx = (x0 + x1) / 2
+    cy = (y0 + y1) / 2
+    outer = (x1 - x0) * 0.46
+    inner = outer * 0.43
+    points = []
+    for index in range(10):
+        angle = -math.pi / 2 + index * math.pi / 5
+        radius = outer if index % 2 == 0 else inner
+        points.append((cx + math.cos(angle) * radius, cy + math.sin(angle) * radius))
+    draw.line(points + [points[0]], fill="black", width=1, joint="curve")
+
+
+def _draw_rat_parent(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int]) -> None:
+    x0, y0, x1, y1 = box
+    cx = (x0 + x1) // 2
+    top_y = y0 + 3
+    lower_y = y1 - 3
+    left_x = x0 + 3
+    right_x = x1 - 3
+    draw.ellipse([cx - 2, top_y - 2, cx + 2, top_y + 2], fill="black")
+    draw.ellipse([left_x - 2, lower_y - 2, left_x + 2, lower_y + 2], fill="black")
+    draw.ellipse([right_x - 2, lower_y - 2, right_x + 2, lower_y + 2], fill="black")
+    branch_y = (top_y + lower_y) // 2
+    draw.line([(cx, top_y + 2), (cx, branch_y)], fill="black", width=1)
+    draw.line([(left_x, branch_y), (right_x, branch_y)], fill="black", width=1)
+    draw.line([(left_x, branch_y), (left_x, lower_y - 2)], fill="black", width=1)
+    draw.line([(right_x, branch_y), (right_x, lower_y - 2)], fill="black", width=1)
+
+
+def draw_leadership_icons(card: Image.Image, person: Person) -> None:
+    draw = ImageDraw.Draw(card)
+    drawers = {
+        "section-leader": _draw_section_leader,
+        "drum-major": _draw_drum_major,
+        "rat-parent": _draw_rat_parent,
+        "informal-leadership": _draw_informal_leadership,
+        "other-leadership": _draw_other_leadership,
+    }
+    for kind in person.leadership_icons:
+        drawer = drawers.get(kind)
+        if drawer:
+            drawer(draw, _icon_box(card, kind))
+
+
 def create_person_card(
     person: Person,
     *,
@@ -1837,6 +1954,9 @@ def create_person_card(
         x = (card.width - width) // 2
         draw.text((x, current_y), line, font=font, fill="black")
         current_y += line_height + gap
+
+    draw_leadership_icons(card, person)
+
     return CardObject(
         person_id=person.person_id,
         image=card,
@@ -2353,6 +2473,7 @@ def scene_to_web_data(
                 "ratYearLabel": person.year_label,
                 "instrumentRaw": person.instrument_raw,
                 "instruments": person.instruments,
+                "leadershipIcons": person.leadership_icons,
                 "parentId": person.parent_id,
                 "childrenIds": person.children_ids,
                 "sourceFields": person.source_fields,
@@ -2384,7 +2505,7 @@ def scene_to_web_data(
         )
 
     return {
-        "schemaVersion": 5,
+        "schemaVersion": 6,
         "sceneId": scene.scene_id,
         "title": scene.title,
         "width": scene.width,

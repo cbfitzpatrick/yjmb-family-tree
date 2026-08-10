@@ -10,6 +10,8 @@ const state = {
   selectedSections: new Set(),
   selectedPersonId: null,
   visiblePeople: new Set(),
+  yearAxisWidth: 0,
+  contentOffsetX: 0,
 };
 
 const q = (selector) => document.querySelector(selector);
@@ -20,6 +22,7 @@ const bands = q('#bands');
 const cardsLayer = q('#cards');
 const connectorSvg = q('#connectors');
 const yearAxis = q('#year-axis');
+const yearAxisTrack = q('#year-axis-track');
 const status = q('#status');
 
 function normalizeSearch(value) {
@@ -51,47 +54,100 @@ function renderBands(data) {
 }
 
 
-function renderYearAxis() {
-  if (!state.data || !yearAxis) return;
-  yearAxis.replaceChildren();
-  yearAxis.style.height = `${state.data.height * state.scale}px`;
-  yearAxis.style.width = 'auto';
+function yearAxisFontSize() {
+  return Math.max(9, Math.min(25, 25 * state.scale));
+}
 
-  const labels = [];
+function measureYearAxisWidth() {
+  if (!state.data) return 0;
+  const canvas = document.createElement('canvas');
+  const context = canvas.getContext('2d');
+  const fontSize = yearAxisFontSize();
+  if (!context) return Math.ceil(4.3 * fontSize);
+  context.font = `800 ${fontSize}px Calibri, Arial, sans-serif`;
+  const widest = Math.max(0, ...(state.data.yearBands || []).map(band => context.measureText(String(band.label)).width));
+  return Math.ceil(Math.max(widest + 18, fontSize * 3.6));
+}
+
+function renderYearAxis() {
+  if (!state.data || !yearAxis || !yearAxisTrack) return;
+  yearAxisTrack.replaceChildren();
+  const fontSize = yearAxisFontSize();
+  const axisWidth = measureYearAxisWidth();
+  state.yearAxisWidth = axisWidth;
+  state.contentOffsetX = axisWidth + 14;
+
+  yearAxis.style.width = `${axisWidth}px`;
+  yearAxisTrack.style.width = `${axisWidth}px`;
+  yearAxisTrack.style.height = `${state.data.height * state.scale}px`;
+
   for (const band of state.data.yearBands || []) {
     const label = document.createElement('div');
     label.className = 'sticky-year-label';
     label.style.top = `${band.y * state.scale}px`;
     label.style.height = `${state.data.yearStripHeight * state.scale}px`;
-    label.style.fontSize = `${Math.max(9, Math.min(25, 25 * state.scale))}px`;
+    label.style.fontSize = `${fontSize}px`;
     label.style.background = band.color;
     label.style.color = band.textColor;
-    label.style.width = 'max-content';
+    label.style.width = `${axisWidth}px`;
     label.textContent = band.label;
-    yearAxis.appendChild(label);
-    labels.push(label);
+    yearAxisTrack.appendChild(label);
   }
 
-  // Size the sticky bar from the actual rendered year text instead of a fixed
-  // 92/68 px value.  All labels use the widest rendered label so the left edge
-  // remains a clean vertical strip, and the width responds to zoom/font size.
-  const axisWidth = Math.max(
-    0,
-    ...labels.map(label => Math.ceil(label.getBoundingClientRect().width)),
-  );
-  if (axisWidth > 0) {
-    yearAxis.style.width = `${axisWidth}px`;
-    for (const label of labels) label.style.width = `${axisWidth}px`;
-  }
-
-  syncYearAxis();
+  // Reserve a real, unscaled gutter for the frozen year column. This keeps the
+  // leftmost card visible even at very small tree zoom levels.
+  stage.style.left = `${state.contentOffsetX}px`;
+  scaledStage.style.width = `${state.contentOffsetX + state.data.width * state.scale}px`;
+  scaledStage.style.height = `${state.data.height * state.scale}px`;
+  syncYearAxisGeometry();
 }
 
-function syncYearAxis() {
-  if (!yearAxis || !viewport) return;
-  // Keep the year strip fixed to the viewport's left edge while allowing it to
-  // move vertically with the corresponding RAT-year rows.
-  yearAxis.style.transform = `translateX(${viewport.scrollLeft}px)`;
+function syncYearAxisScroll() {
+  if (!yearAxisTrack || !viewport || viewport.hidden) return;
+  // The outer axis is fixed to the viewport, so horizontal scroll never moves
+  // it. Only the inner track follows vertical scrolling.
+  yearAxisTrack.style.transform = `translate3d(0, ${-viewport.scrollTop}px, 0)`;
+}
+
+function syncYearAxisGeometry() {
+  if (!yearAxis || !viewport || viewport.hidden) return;
+  const rect = viewport.getBoundingClientRect();
+  yearAxis.style.left = `${Math.round(rect.left)}px`;
+  yearAxis.style.top = `${Math.round(rect.top)}px`;
+  yearAxis.style.height = `${Math.round(rect.height)}px`;
+  syncYearAxisScroll();
+}
+
+function leadershipIconSvg(kind) {
+  const attrs = 'viewBox="0 0 18 18" aria-hidden="true"';
+  if (kind === 'section-leader') return `<svg ${attrs}><path d="M2 4.5 9 1.5l7 3M2 9 9 6l7 3M2 13.5l7-3 7 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>`;
+  if (kind === 'drum-major') return `<svg ${attrs}><path d="M4 15 14.5 3.5M2 6l4-3M2 10l5-3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="15" cy="3" r="2" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>`;
+  if (kind === 'rat-parent') return `<svg ${attrs}><circle cx="9" cy="3.5" r="2" fill="currentColor"/><circle cx="4" cy="14" r="2" fill="currentColor"/><circle cx="14" cy="14" r="2" fill="currentColor"/><path d="M9 5.5v4M4 9.5h10M4 9.5V12M14 9.5V12" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>`;
+  if (kind === 'informal-leadership') return `<svg ${attrs}><path d="M2 8.5 10 4v9L2 9.5Zm8-.8h2.5v1.8H10M5 10l2 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M14 5.5 17 4M14 9h3.5M14 12.5l3 1.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`;
+  return `<svg ${attrs}><path d="m9 1.5 2.1 4.4 4.9.7-3.5 3.4.8 4.9L9 12.6l-4.3 2.3.8-4.9L2 6.6l4.9-.7Z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>`;
+}
+
+function renderLeadershipLegend() {
+  const container = q('#leadership-icon-key');
+  if (!container) return;
+  const entries = [
+    ['section-leader', 'Section Leader'],
+    ['drum-major', 'Drum Major'],
+    ['rat-parent', 'RAT Parent'],
+    ['informal-leadership', 'Informal leadership'],
+    ['other-leadership', 'Other formal leadership'],
+  ];
+  container.replaceChildren();
+  for (const [kind, labelText] of entries) {
+    const row = document.createElement('div');
+    row.className = 'leadership-key-item';
+    const icon = document.createElement('span');
+    icon.innerHTML = leadershipIconSvg(kind);
+    const label = document.createElement('span');
+    label.textContent = labelText;
+    row.append(icon, label);
+    container.appendChild(row);
+  }
 }
 
 function buildTreeIndexes(data) {
@@ -189,8 +245,6 @@ function setScale(next) {
   if (!state.data) return;
   state.scale = Math.max(.12, Math.min(3, next));
   stage.style.transform = `scale(${state.scale})`;
-  scaledStage.style.width = `${state.data.width * state.scale}px`;
-  scaledStage.style.height = `${state.data.height * state.scale}px`;
   q('#zoom-label').textContent = `${Math.round(state.scale * 100)}%`;
   renderYearAxis();
 }
@@ -587,14 +641,16 @@ function fitVisible() {
   const padding = 90;
   const width = Math.max(1, bounds.maxX - bounds.minX + padding * 2);
   const height = Math.max(1, bounds.maxY - bounds.minY + padding * 2);
+  const availableWidth = Math.max(120, viewport.clientWidth - state.yearAxisWidth - 44);
   const scale = Math.min(
     1.45,
-    Math.max(.12, (viewport.clientWidth - 30) / width),
+    Math.max(.12, availableWidth / width),
     Math.max(.12, (viewport.clientHeight - 30) / height),
   );
   setScale(scale);
-  viewport.scrollLeft = Math.max(0, (bounds.minX - padding) * state.scale);
+  viewport.scrollLeft = Math.max(0, state.contentOffsetX + bounds.minX * state.scale - state.yearAxisWidth - 24);
   viewport.scrollTop = Math.max(0, (bounds.minY - padding) * state.scale);
+  syncYearAxisScroll();
 }
 
 function locatePerson(personId, { ensureVisible = false } = {}) {
@@ -619,11 +675,13 @@ async function main() {
     renderConnectors(data);
     renderCards(data);
     renderSectionFilter();
-    setScale(1);
-    applyVisibility();
+    renderLeadershipLegend();
 
     status.hidden = true;
     viewport.hidden = false;
+    setScale(1);
+    applyVisibility();
+    requestAnimationFrame(syncYearAxisGeometry);
   } catch (error) {
     console.error(error);
     if (error?.code === 'AUTH_REQUIRED') { window.location.replace('index.html'); return; }
@@ -634,7 +692,8 @@ async function main() {
 q('#zoom-in').addEventListener('click', () => setScale(state.scale * 1.15));
 q('#zoom-out').addEventListener('click', () => setScale(state.scale / 1.15));
 q('#zoom-reset').addEventListener('click', () => setScale(1));
-viewport.addEventListener('scroll', syncYearAxis, { passive: true });
+viewport.addEventListener('scroll', syncYearAxisScroll, { passive: true });
+window.addEventListener('resize', syncYearAxisGeometry, { passive: true });
 q('#search').addEventListener('input', updateSearchResults);
 q('#search').addEventListener('keydown', (event) => {
   if (event.key === 'Enter') {

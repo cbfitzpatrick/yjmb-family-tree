@@ -83,3 +83,16 @@ Existing-record correction requests remain administrator-reviewed because modify
 See `GITHUB_SETUP.md` for the complete Windows, GitHub Pages, GitHub Actions, Cloudflare Worker, KV, Turnstile, secret, and deployment procedure.
 
 See `SECURITY.md` for the threat model, abuse score, cookie/session behavior, and limitations.
+
+## v15 leadership and maintenance tools
+
+Leadership remains split into structured formal and informal data. `Marching Band Leadership Role(s)` contains formal roles; `Served in Informal Leadership Position` plus `Informal Leadership Position(s)` represent informal leadership. Cards now display black minimalist corner icons for Section Leader, Drum Major, RAT Parent, informal leadership, and other formal leadership. The Visualizer menu contains an icon key.
+
+Maintenance scripts added in v15:
+
+- `normalizeSectionNames.py`
+- `classifyLeadershipPositions.py`
+- `assignLeadershipFromNotes.py`
+- `createSafeDebugBundle.py`
+
+See `README_V15_DATA_TOOLS.md` for commands and safety behavior.
