@@ -117,5 +117,56 @@
     dataPromise = unlockFromSession().catch((error) => { dataPromise = null; throw error; });
     return dataPromise;
   }
-  window.YJMBSecureData = { AccessRequiredError, unlockFromSession, loadTreeData, clearAccess, getAccessToken, rememberAccessToken, apiFetch };
+  function filenameFromDisposition(value) {
+    const match = String(value || '').match(/filename\*?=(?:UTF-8''|")?([^";]+)/i);
+    if (!match) return '';
+    try { return decodeURIComponent(match[1].replace(/^"|"$/g, '').trim()); }
+    catch { return match[1].replace(/^"|"$/g, '').trim(); }
+  }
+  async function downloadDeveloperWorkbook(developerKey) {
+    const key = String(developerKey || '');
+    if (!key) throw new Error('Developer export key is required.');
+    const cfg = await config();
+    const token = getAccessToken();
+    if (!token) throw new AccessRequiredError();
+    const response = await fetch(`${cfg.workerApiBase}/developer/export`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'X-Developer-Key': key,
+      },
+      cache: 'no-store',
+    });
+    if (response.status === 401) { clearAccess(); throw new AccessRequiredError(); }
+    if (!response.ok) {
+      let message = `Developer export returned HTTP ${response.status}.`;
+      try { const body = await response.json(); if (body?.error) message = body.error; } catch { /* binary/empty */ }
+      throw new Error(message);
+    }
+    const blob = await response.blob();
+    const filename = filenameFromDisposition(response.headers.get('Content-Disposition')) || `YJMB Trees ${new Date().toISOString().slice(0, 10)}.xlsx`;
+    const url = URL.createObjectURL(blob);
+    try {
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = filename;
+      anchor.rel = 'noopener';
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+    } finally {
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+    }
+    return filename;
+  }
+  window.YJMBSecureData = {
+    AccessRequiredError,
+    unlockFromSession,
+    loadTreeData,
+    clearAccess,
+    getAccessToken,
+    rememberAccessToken,
+    apiFetch,
+    downloadDeveloperWorkbook,
+  };
 })();

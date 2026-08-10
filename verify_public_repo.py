@@ -39,6 +39,43 @@ def tracked_files() -> list[Path]:
     return [Path(line.strip()) for line in result.stdout.splitlines() if line.strip()]
 
 
+
+
+def local_secret_values() -> dict[str, str]:
+    path = ROOT / "access_secrets.json"
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        fail(f"Local access_secrets.json is invalid JSON: {exc}")
+    values: dict[str, str] = {}
+    for key in ("treeDataKey", "submissionKey", "masterWorkbookKey", "sessionSigningKey", "developerExportKey"):
+        value = str(data.get(key, ""))
+        if len(value) >= 12:
+            values[key] = value
+    return values
+
+
+def ensure_local_secrets_not_tracked() -> None:
+    secrets = local_secret_values()
+    if not secrets:
+        return
+    leaks: list[str] = []
+    for path in tracked_files():
+        full = ROOT / path
+        if not full.is_file():
+            continue
+        try:
+            text = full.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+        for name, value in secrets.items():
+            if value in text:
+                leaks.append(f"{path} contains local secret value {name}")
+    if leaks:
+        fail("Local secret material appears in tracked text files:\n  " + "\n  ".join(sorted(leaks)))
+
 def main() -> int:
     for path in PROHIBITED_PUBLIC_PATHS:
         if path.exists():
@@ -91,11 +128,14 @@ def main() -> int:
     if bad_tracked:
         fail("Privacy-sensitive files are tracked by Git:\n  " + "\n  ".join(sorted(bad_tracked)))
 
+    ensure_local_secrets_not_tracked()
+
     print("Public-repository privacy check passed.")
     print("  - encrypted bundle present: docs/data/tree_data.enc")
     print("  - no plaintext docs/data/tree_data.json")
     print("  - no public name-bearing docs/assets/cards directory")
     print("  - no public access-answer fingerprints or answer-derived key wraps")
+    print("  - no local cryptographic/developer export secret value found in tracked text files")
     if tracked_files(): print("  - no workbook/data/backups/cards/trees tracked by Git")
     return 0
 

@@ -10,6 +10,7 @@ The following must never be committed:
 - plaintext `docs/data/tree_data.json`;
 - individual public card PNGs containing names;
 - Cloudflare/GitHub credentials;
+- developer export key;
 - AES keys;
 - plaintext submission payloads.
 
@@ -47,13 +48,22 @@ Protected master workbook:
 
 - AES-256-GCM;
 - stored in `secure/master_workbook.enc`;
-- key held in GitHub Actions secret `MASTER_WORKBOOK_KEY_B64` and locally in the gitignored secret file.
+- key held in GitHub Actions secret `MASTER_WORKBOOK_KEY_B64`, the matching Cloudflare Worker secret for owner export, and locally in the gitignored secret file.
 
 Protected contribution submissions:
 
 - AES-256-GCM;
 - Worker encrypts before GitHub storage;
 - key is a Cloudflare/GitHub secret `SUBMISSION_KEY_B64`.
+
+
+## Developer-only master-workbook export
+
+The browser never receives `MASTER_WORKBOOK_KEY_B64` or `DEVELOPER_EXPORT_KEY`. A developer export request must present a valid normal signed access token plus the separate `X-Developer-Key` value. The Worker compares the supplied developer key against its `DEVELOPER_EXPORT_KEY` secret using a constant-time SHA-256 digest comparison, rate-limits failures, fetches the current `secure/master_workbook.enc` from GitHub, decrypts the AES-256-GCM envelope inside the Worker with `MASTER_WORKBOOK_KEY_B64`, and returns the resulting XLSX bytes with no-store caching headers.
+
+There is no visible export button. The owner command is `Ctrl+Alt+Shift+E` on the tree page (or `YJMBDeveloperExport()` in the console), but hiding this command is not considered an authorization control because frontend source is public. The independent Worker secret is the authorization control.
+
+The export key is deliberately **not** stored in GitHub Actions because Actions does not need it. `MASTER_WORKBOOK_KEY_B64` is stored in both GitHub Actions and Cloudflare because Actions must update the encrypted workbook while the Worker must decrypt it for an authorized owner download.
 
 ## Abuse detection
 
@@ -108,6 +118,6 @@ The local `access_secrets.json` supplies the decryption key. After review, the a
 - Knowledge questions are one knowledge factor, not true multi-factor authentication.
 - A visitor who legitimately decrypts the tree can inspect or copy data rendered in their browser.
 - A JavaScript-created cookie cannot be `HttpOnly` on a static GitHub Pages origin.
-- Security depends on protecting Cloudflare secrets, GitHub Actions secrets, the fine-grained GitHub token, and the local secret file.
+- Security depends on protecting Cloudflare secrets (including the developer export key), GitHub Actions secrets, the fine-grained GitHub token, and the local secret file.
 - The abuse score is a conservative routing mechanism, not proof that a person is or is not malicious.
 - FERPA applicability and compliance depend on who maintains the records, what the records legally constitute, institutional policy, consent/disclosure basis, and other facts outside this source code.

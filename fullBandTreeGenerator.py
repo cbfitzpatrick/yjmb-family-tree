@@ -2485,6 +2485,7 @@ def export_github_pages_site(
         "gate.css",
         "gate.js",
         "secure-data.js",
+        "developer-export.js",
         "app.js",
         "correction.js",
         "add-yourself.js",

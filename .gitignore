@@ -28,6 +28,7 @@ access_secrets.json
 worker/.dev.vars
 worker/.env
 worker/node_modules/
+worker/.wrangler/
 .env
 .dev.vars
 
@@ -38,23 +39,3 @@ queue_result.json
 # Legacy public-Issue processor/workflow.
 process_tree_submission.py
 .github/workflows/process-tree-submission.yml
-
-
-.env
-.env.*
-.dev.vars
-.dev.vars.*
-
-access_secrets.json
-YJMB Trees.xlsx
-*.xlsx
-.venv/
-.env
-.env.*
-.dev.vars
-.dev.vars.*
-backups/
-cards/
-trees/
-docs/data/tree_data.json
-docs/assets/cards/
