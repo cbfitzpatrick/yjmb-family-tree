@@ -1,0 +1,10 @@
+ACCESS_STAGE_1_JSON=["replace locally"]
+ACCESS_STAGE_2_JSON=["replace locally"]
+ACCESS_STAGE_3_JSON=["replace locally","optional alternate"]
+SESSION_SIGNING_KEY=replace-with-at-least-32-random-bytes-or-long-random-string
+TREE_DATA_KEY_B64=replace-with-base64-32-byte-key
+SUBMISSION_KEY_B64=replace-with-base64-32-byte-key
+MASTER_WORKBOOK_KEY_B64=replace-with-base64-32-byte-key
+DEVELOPER_EXPORT_KEY=replace-with-long-random-developer-export-key
+GITHUB_TOKEN=replace-with-fine-grained-token
+TURNSTILE_SECRET=

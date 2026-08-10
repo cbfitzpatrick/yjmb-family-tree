@@ -32,8 +32,28 @@ Local/secret only:
 - `access_secrets.json`;
 - Cloudflare Worker answer secrets;
 - GitHub write token used by the Worker;
-- AES keys and session-signing secret;
+- AES keys, session-signing secret, and developer-export secret;
 - plaintext local card/tree renderings and backups.
+
+
+## Developer-only Excel export
+
+The protected site includes an intentionally hidden owner export command for retrieving the **latest committed protected master workbook** as an ordinary `.xlsx` file for local archival/editing. There is no visible public download button. On `tree.html`, the owner can press:
+
+```text
+Ctrl + Alt + Shift + E
+```
+
+or run `YJMBDeveloperExport()` from the browser console. The browser then prompts for the separate developer export key.
+
+Export authorization requires **both**:
+
+1. a currently valid normal YJMB access session; and
+2. possession of the independent `DEVELOPER_EXPORT_KEY`.
+
+The developer key is generated locally in `access_secrets.json` and stored in Cloudflare only as a Worker secret. It is never placed in `docs/`, GitHub Actions, localStorage, cookies, or public JavaScript. The Worker fetches the latest `secure/master_workbook.enc` from the `main` branch, decrypts it server-side with `MASTER_WORKBOOK_KEY_B64`, and returns the workbook with `Cache-Control: no-store`. Failed export-key attempts are rate-limited through the abuse KV namespace.
+
+The hidden keyboard command is only a convenience and is **not** the security boundary; anyone can inspect public JavaScript. Security depends on the server-side key check and the normal authenticated session. Possession of the export key is not the same as cryptographically proving a person's identity, so protect it like a password.
 
 ## Access flow
 

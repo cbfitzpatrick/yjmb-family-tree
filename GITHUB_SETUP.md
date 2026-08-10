@@ -281,11 +281,13 @@ npx wrangler secret put ACCESS_STAGE_3_JSON
 npx wrangler secret put SESSION_SIGNING_KEY
 npx wrangler secret put TREE_DATA_KEY_B64
 npx wrangler secret put SUBMISSION_KEY_B64
+npx wrangler secret put MASTER_WORKBOOK_KEY_B64
+npx wrangler secret put DEVELOPER_EXPORT_KEY
 npx wrangler secret put GITHUB_TOKEN
 npx wrangler secret put TURNSTILE_SECRET
 ```
 
-The accepted question answers now exist only in your local gitignored file and Cloudflare Worker secrets. They are not exported to `docs/`.
+The accepted question answers and developer export key now exist only in your local gitignored file and Cloudflare Worker secrets. They are not exported to `docs/`. `MASTER_WORKBOOK_KEY_B64` is also a Worker secret so the owner-only export endpoint can decrypt the protected master workbook server-side.
 
 If you choose not to use Turnstile, leave `TURNSTILE_SECRET` unset and leave `turnstileSiteKey` blank. The other abuse checks remain active.
 
@@ -320,6 +322,25 @@ True
 ```
 
 ---
+
+
+## 10A. Test the developer-only workbook export prerequisites
+
+After setting the new secrets, verify their **names** exist:
+
+```powershell
+npx wrangler secret list
+```
+
+For the developer export, Cloudflare must have both:
+
+```text
+MASTER_WORKBOOK_KEY_B64
+DEVELOPER_EXPORT_KEY
+```
+
+The first value must be exactly the same `masterWorkbookKey` that is stored in the GitHub Actions secret `MASTER_WORKBOOK_KEY_B64`. The second value is unique to Cloudflare and must **not** be added to GitHub Actions or frontend configuration.
+
 
 ## 11. Point the static site at the Worker
 
@@ -590,6 +611,42 @@ Never add `YJMB Trees.xlsx`.
 
 ---
 
+
+## 20A. Download the latest website master workbook to your PC
+
+This export downloads the latest `secure/master_workbook.enc` currently committed on the repository's `main` branch, decrypts it in the Cloudflare Worker, and saves an ordinary XLSX file to your browser's normal Downloads location. It therefore includes accepted website submissions that have already been processed and committed by GitHub Actions. It cannot include unpublished edits that exist only on another computer.
+
+1. Open the deployed tree and complete normal access if needed.
+2. While on `tree.html`, press:
+
+```text
+Ctrl + Alt + Shift + E
+```
+
+3. Enter the **raw `developerExportKey` value** from your local `access_secrets.json` when prompted. Do not add quotes and do not paste `DEVELOPER_EXPORT_KEY=`.
+4. The browser downloads a file named approximately:
+
+```text
+YJMB Trees 2026-08-10.xlsx
+```
+
+As an alternate owner command, open Developer Tools → Console and run:
+
+```javascript
+YJMBDeveloperExport()
+```
+
+The key is sent only to the Worker over HTTPS for that request and is not saved to localStorage/cookies by the supplied code. After six failed export-key attempts from the same privacy-hashed network source within an hour, the Worker temporarily refuses further developer export attempts from that source. Successful exports are also rate-limited.
+
+If the browser says **Developer export is not configured**, set/re-set these Worker secrets and redeploy:
+
+```powershell
+cd "C:\Users\Chris Fitz\Documents\Fun\Trumpet History\fullbandtree\worker"
+npx wrangler secret put MASTER_WORKBOOK_KEY_B64
+npx wrangler secret put DEVELOPER_EXPORT_KEY
+npx wrangler deploy
+```
+
 ## 21. Rotating access answers or encryption keys
 
 ### Change only the knowledge answers
@@ -615,6 +672,17 @@ SESSION_SIGNING_KEY
 ```
 
 in the Cloudflare Worker and redeploy. Old signed session cookies will fail validation.
+
+
+### Rotate the developer export key
+
+Generate or replace `developerExportKey` in your local `access_secrets.json`, then update only the Cloudflare Worker secret:
+
+```powershell
+npx wrangler secret put DEVELOPER_EXPORT_KEY
+```
+
+Do not add the developer export key to GitHub Actions. Existing normal visitor sessions do not need to be invalidated when only this key changes.
 
 ### Rotate the tree encryption key
 
@@ -650,6 +718,7 @@ SESSION_SIGNING_KEY
 TREE_DATA_KEY_B64
 SUBMISSION_KEY_B64
 MASTER_WORKBOOK_KEY_B64
+DEVELOPER_EXPORT_KEY
 GITHUB_TOKEN
 TURNSTILE_SECRET
 ```

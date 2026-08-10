@@ -20,7 +20,8 @@ function cors(request, env) {
   return {
     'Access-Control-Allow-Origin': allowedOrigin(request, env),
     'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-    'Access-Control-Allow-Headers': 'Authorization,Content-Type',
+    'Access-Control-Allow-Headers': 'Authorization,Content-Type,X-Developer-Key',
+    'Access-Control-Expose-Headers': 'Content-Disposition',
     'Access-Control-Max-Age': '86400',
     'Vary': 'Origin',
   };
@@ -47,6 +48,18 @@ function b64(bytes) {
 function fromB64(text) {
   const binary = atob(text);
   return Uint8Array.from(binary, (c) => c.charCodeAt(0));
+}
+
+async function constantTimeTextEqual(left, right) {
+  const [a, b] = await Promise.all([
+    crypto.subtle.digest('SHA-256', encoder.encode(String(left ?? ''))),
+    crypto.subtle.digest('SHA-256', encoder.encode(String(right ?? ''))),
+  ]);
+  const x = new Uint8Array(a);
+  const y = new Uint8Array(b);
+  let diff = 0;
+  for (let i = 0; i < x.length; i += 1) diff |= x[i] ^ y[i];
+  return diff === 0;
 }
 async function hmacBytes(secret, text) {
   const key = await crypto.subtle.importKey('raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
@@ -200,6 +213,88 @@ async function github(path, options, env) {
   if (!response.ok) throw new Error(`GitHub API ${response.status}: ${body.message || text}`);
   return body;
 }
+
+async function getRepositoryTextFile(path, env) {
+  const owner = env.GITHUB_OWNER || 'cbfitzpatrick';
+  const repo = env.GITHUB_REPO || 'yjmb-family-tree';
+  const encodedPath = path.split('/').map(encodeURIComponent).join('/');
+  const branch = encodeURIComponent(env.GITHUB_BRANCH || 'main');
+  const response = await fetch(
+    `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${encodedPath}?ref=${branch}`,
+    {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/vnd.github.raw+json',
+        'Authorization': `Bearer ${env.GITHUB_TOKEN}`,
+        'X-GitHub-Api-Version': '2022-11-28',
+        'User-Agent': 'yjmb-family-tree-worker',
+      },
+    },
+  );
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`GitHub raw contents API ${response.status}: ${text}`);
+  }
+  return response.text();
+}
+
+async function decryptMasterWorkbookEnvelope(envelopeText, env) {
+  const keyBytes = fromB64(env.MASTER_WORKBOOK_KEY_B64 || '');
+  if (keyBytes.length !== 32) throw new Error('MASTER_WORKBOOK_KEY_B64 must decode to 32 bytes.');
+  let envelope;
+  try { envelope = JSON.parse(envelopeText); } catch { throw new Error('Protected master workbook envelope is invalid JSON.'); }
+  if (envelope.format !== 'yjmb-master-workbook-v1' || envelope.cipher !== 'AES-256-GCM') {
+    throw new Error('Unsupported protected master workbook format.');
+  }
+  const key = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-GCM' }, false, ['decrypt']);
+  const plaintext = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: fromB64(envelope.iv || ''), tagLength: 128 },
+    key,
+    fromB64(envelope.ciphertext || ''),
+  );
+  return new Uint8Array(plaintext);
+}
+
+async function developerExport(request, env, access, common) {
+  const configuredKey = String(env.DEVELOPER_EXPORT_KEY || '');
+  if (configuredKey.length < 32) {
+    return json({ error: 'Developer export is not configured.' }, 503, common);
+  }
+  const masterKey = fromB64(env.MASTER_WORKBOOK_KEY_B64 || '');
+  if (masterKey.length !== 32) {
+    return json({ error: 'Protected workbook export key is not configured.' }, 503, common);
+  }
+
+  const ipKey = await privacyKey(request, env);
+  const failures = Number(env.ABUSE_KV ? await env.ABUSE_KV.get(`developer-export-fail-hour:${ipKey}`) || 0 : 0);
+  if (failures >= 6) return json({ error: 'Too many developer export attempts.' }, 429, common);
+
+  const suppliedKey = request.headers.get('X-Developer-Key') || '';
+  if (!suppliedKey || !(await constantTimeTextEqual(suppliedKey, configuredKey))) {
+    await kvCount(env, `developer-export-fail-hour:${ipKey}`, 3600);
+    return json({ error: 'Developer authorization failed.' }, 403, common);
+  }
+
+  const successCount = await kvCount(env, `developer-export-success-hour:${ipKey}`, 3600);
+  if (successCount > 8) return json({ error: 'Developer export rate limit reached.' }, 429, common);
+
+  const envelopeText = await getRepositoryTextFile('secure/master_workbook.enc', env);
+  const workbookBytes = await decryptMasterWorkbookEnvelope(envelopeText, env);
+  const date = new Date().toISOString().slice(0, 10);
+  const filename = `YJMB Trees ${date}.xlsx`;
+  return new Response(workbookBytes, {
+    status: 200,
+    headers: {
+      ...common,
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Cache-Control': 'no-store, max-age=0',
+      'Pragma': 'no-cache',
+      'X-Content-Type-Options': 'nosniff',
+    },
+  });
+}
+
 async function putEncryptedSubmission(id, route, encrypted, env) {
   const path = `.secure_submissions/${route}/${id}.enc.json`;
   const content = b64(encoder.encode(JSON.stringify(encrypted)));
@@ -261,6 +356,10 @@ export default {
       if (url.pathname === '/submit' && request.method === 'POST') {
         const access = await requireAccess(request, env); if (!access) return json({ error: 'Access session expired.' }, 401, common);
         const result = await submit(request, env, access); return json(result.body, result.status, common);
+      }
+      if (url.pathname === '/developer/export' && request.method === 'POST') {
+        const access = await requireAccess(request, env); if (!access) return json({ error: 'Access session expired.' }, 401, common);
+        return developerExport(request, env, access, common);
       }
       return json({ error: 'Not found.' }, 404, common);
     } catch (error) {

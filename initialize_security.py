@@ -22,6 +22,7 @@ def main():
     data.setdefault('submissionKey',key32())
     data.setdefault('masterWorkbookKey',key32())
     data.setdefault('sessionSigningKey',secrets.token_urlsafe(48))
+    data.setdefault('developerExportKey',secrets.token_urlsafe(48))
     PATH.write_text(json.dumps(data,indent=2)+"\n",encoding='utf-8')
     print(f'Updated local secret file: {PATH}')
     print('This file is gitignored. Do not commit or publish it.')
