@@ -1,0 +1,60 @@
+.venv/
+__pycache__/
+*.pyc
+~$*.xlsx
+.full_band_tree_resolutions.json
+.DS_Store
+Thumbs.db
+
+# NEVER publish plaintext master/member data or local review backups.
+YJMB Trees.xlsx
+*.xlsx
+*.xls
+*.xlsm
+*.csv
+backups/
+
+# Local generated artifacts can contain names in plaintext/image form.
+cards/
+trees/
+
+# Public build must contain only the encrypted site payload.
+docs/data/tree_data.json
+docs/assets/cards/
+docs/access_config.js
+
+# Local access answers and cryptographic secrets. Never commit these.
+access_secrets.json
+worker/.dev.vars
+worker/.env
+worker/node_modules/
+.env
+.dev.vars
+
+# Ephemeral secure-queue working files.
+queue_result.json
+.secure-submission-*.json
+
+# Legacy public-Issue processor/workflow.
+process_tree_submission.py
+.github/workflows/process-tree-submission.yml
+
+
+.env
+.env.*
+.dev.vars
+.dev.vars.*
+
+access_secrets.json
+YJMB Trees.xlsx
+*.xlsx
+.venv/
+.env
+.env.*
+.dev.vars
+.dev.vars.*
+backups/
+cards/
+trees/
+docs/data/tree_data.json
+docs/assets/cards/

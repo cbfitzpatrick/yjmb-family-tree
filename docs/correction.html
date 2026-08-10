@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Correct YJMB Tree Details</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="correction-page">
+  <header class="correction-header">
+    <a class="back-link" href="tree.html">← Back to family tree</a>
+    <h1>Correct tree details</h1>
+    <p>Update the fields that are incorrect. Your entry change request will be emailed to the tree admins for review before the master spreadsheet is changed.</p>
+  </header>
+
+  <main class="correction-main">
+    <div id="correction-status" class="status">Loading person…</div>
+
+    <form id="correction-form" class="correction-form" hidden>
+      <div class="correction-person-heading">
+        <p class="details-kicker">Correction for</p>
+        <h2 id="correction-name"></h2>
+        <p id="correction-meta"></p>
+      </div>
+
+      <div id="correction-fields" class="correction-fields"></div>
+
+      <label class="form-field form-field-wide">
+        <span>Additional context</span>
+        <textarea id="correction-context" rows="5" placeholder="Explain anything that is not obvious from the edited fields."></textarea>
+      </label>
+
+      <div class="correction-actions">
+        <button id="send-correction" class="primary-button" type="submit">Send entry change request</button>
+        <span id="correction-send-status" class="bug-form-status" role="status" aria-live="polite"></span>
+      </div>
+    </form>
+  </main>
+
+  <div class="bug-report-slot page-footer-slot"></div>
+
+  <script src="secure-data.js"></script>
+  <script src="admin-mail.js"></script>
+  <script src="correction.js"></script>
+</body>
+</html>

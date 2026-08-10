@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Add Yourself to the YJMB Family Tree</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="questionnaire-page">
+  <header class="questionnaire-header">
+    <a class="back-link" href="tree.html">← Back to family tree</a>
+    <div>
+      <p class="details-kicker">YJMB family tree</p>
+      <h1>Add yourself to the tree</h1>
+      <p>Answer what you know. You can go back at any time before submitting to revise an earlier answer.</p>
+    </div>
+  </header>
+
+  <main class="questionnaire-main">
+    <div class="wizard-progress" aria-label="Questionnaire progress">
+      <div id="wizard-progress-bar" class="wizard-progress-bar"></div>
+    </div>
+    <p id="wizard-progress-text" class="wizard-progress-text">Step 1 of 5</p>
+    <div id="questionnaire-status" class="questionnaire-status" hidden></div>
+
+    <form id="add-yourself-form" novalidate>
+      <section class="wizard-step" data-step="1">
+        <div class="wizard-card">
+          <p class="details-kicker">About you</p>
+          <h2>What is your name?</h2>
+          <div id="name-fields" class="compact-field-grid">
+            <label class="form-field">
+              <span>First/Preferred Name</span>
+              <input id="self-given" type="text" autocomplete="given-name" placeholder="First/Preferred Name" required>
+            </label>
+            <label class="form-field">
+              <span id="self-family-label">Family/Last Name</span>
+              <input id="self-family" type="text" autocomplete="family-name" placeholder="Family/Last Name" required>
+            </label>
+            <label id="self-married-wrap" class="form-field" hidden>
+              <span>Last/Married Name</span>
+              <input id="self-married" type="text" placeholder="Last/Married Name">
+            </label>
+          </div>
+
+          <fieldset class="choice-group">
+            <legend>Have you changed your last name since being in the band?</legend>
+            <label><input type="radio" name="changed-last-name" value="yes"> Yes</label>
+            <label><input type="radio" name="changed-last-name" value="no"> No</label>
+          </fieldset>
+          <div id="married-name-guidance" class="form-guidance" hidden>
+            Update the name fields above so <strong>Family/Maiden Name</strong> is the family name you used in band and <strong>Last/Married Name</strong> is your current married surname.
+          </div>
+
+          <fieldset class="choice-group">
+            <legend>Do you have a nickname?</legend>
+            <label><input type="radio" name="has-nickname" value="yes"> Yes</label>
+            <label><input type="radio" name="has-nickname" value="no"> No</label>
+          </fieldset>
+          <div id="nickname-details" class="nickname-details" hidden>
+            <label class="form-field nickname-field">
+              <span>What is your nickname?</span>
+              <input id="self-nickname" type="text" placeholder="Nickname" autocomplete="nickname">
+            </label>
+            <fieldset class="choice-group compact-choice-group">
+              <legend>How should you be identified on your tree card?</legend>
+              <label><input type="radio" name="tree-name-preference" value="given"> Use my First/Preferred Name</label>
+              <label><input type="radio" name="tree-name-preference" value="nickname"> Use my Nickname</label>
+            </fieldset>
+          </div>
+
+          <div id="existing-self-warning" class="match-panel warning-panel" hidden></div>
+          <div class="wizard-actions wizard-actions-end">
+            <button class="primary-button" type="button" data-next>Next</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="wizard-step" data-step="2" hidden>
+        <div class="wizard-card">
+          <p class="details-kicker">Band details</p>
+          <h2>Your RAT/VET information</h2>
+
+          <fieldset class="choice-group">
+            <legend>Are you currently a RAT?</legend>
+            <label><input type="radio" name="currently-rat" value="yes"> Yes</label>
+            <label><input type="radio" name="currently-rat" value="no"> No</label>
+          </fieldset>
+
+          <div class="compact-field-grid band-fields">
+            <label class="form-field">
+              <span>What is your RAT year?</span>
+              <select id="self-rat-year" required>
+                <option value="" selected disabled>RAT Year</option>
+              </select>
+            </label>
+          </div>
+
+          <fieldset class="choice-group">
+            <legend>Have you been in multiple sections?</legend>
+            <label><input type="radio" name="multiple-sections" value="yes"> Yes</label>
+            <label><input type="radio" name="multiple-sections" value="no"> No</label>
+          </fieldset>
+
+          <section class="question-block section-history-block">
+            <h3>What section have you been in?</h3>
+            <p class="field-help">List sections in the order you played them. This order is also used for the left-to-right colors on a multi-section tree card.</p>
+            <div id="section-memberships" class="section-membership-list"></div>
+            <button id="add-section" class="secondary-button icon-button" type="button" hidden><span aria-hidden="true">＋</span> Add another section</button>
+          </section>
+
+          <section class="question-block experience-history-block">
+            <h3>Other Georgia Tech ensembles</h3>
+            <fieldset class="choice-group compact-choice-group">
+              <legend>Have you played in Georgia Tech ensembles outside of marching band?</legend>
+              <label><input type="radio" name="other-gt-ensembles" value="yes"> Yes</label>
+              <label><input type="radio" name="other-gt-ensembles" value="no"> No</label>
+            </fieldset>
+            <div id="other-gt-ensemble-details" hidden>
+              <div class="compact-field-grid experience-field-grid">
+                <label class="form-field">
+                  <span>What other GT ensemble(s) were you in?</span>
+                  <input id="other-gt-ensembles-list" type="text" placeholder="e.g., Concert Band, Jazz Ensemble, Basketball Pep Band">
+                </label>
+              </div>
+              <fieldset class="choice-group compact-choice-group">
+                <legend>Did you play a different instrument in those ensembles?</legend>
+                <label><input type="radio" name="different-gt-instrument" value="yes"> Yes</label>
+                <label><input type="radio" name="different-gt-instrument" value="no"> No</label>
+              </fieldset>
+              <label id="other-gt-instruments-wrap" class="form-field experience-inline-field" hidden>
+                <span>What other instrument(s) did you play?</span>
+                <input id="other-gt-instruments" type="text" placeholder="e.g., French horn, bass clarinet">
+              </label>
+            </div>
+          </section>
+
+          <section class="question-block leadership-history-block">
+            <h3>Marching band leadership</h3>
+            <fieldset class="choice-group leadership-role-group">
+              <legend>What leadership roles have you served in within the marching band?</legend>
+              <p class="field-help">Select all that apply. Leave all unchecked if none apply.</p>
+              <label><input type="checkbox" name="leadership-role" value="Drum Major"> Drum Major</label>
+              <label><input type="checkbox" name="leadership-role" value="Section Leader"> Section Leader</label>
+              <label><input type="checkbox" name="leadership-role" value="RAT Parent"> RAT Parent</label>
+              <label><input type="checkbox" name="leadership-role" value="Props"> Props</label>
+              <label><input type="checkbox" name="leadership-role" value="Operations"> Operations</label>
+              <label><input type="checkbox" name="leadership-role" value="MCM"> MCM</label>
+              <label><input type="checkbox" name="leadership-role" value="Staff Assistant"> Staff Assistant</label>
+            </fieldset>
+
+            <fieldset class="choice-group compact-choice-group">
+              <legend>Have you served in any informal leadership positions in marching band?</legend>
+              <label><input type="radio" name="informal-leadership" value="yes"> Yes</label>
+              <label><input type="radio" name="informal-leadership" value="no"> No</label>
+            </fieldset>
+            <label id="informal-leadership-wrap" class="form-field experience-inline-field" hidden>
+              <span>What informal leadership have you done?</span>
+              <input id="informal-leadership-description" type="text" placeholder="Describe the role, responsibility, or way you helped lead">
+            </label>
+          </section>
+
+          <fieldset id="legacy-system-group" class="choice-group" hidden>
+            <legend>Did you have the RAT/VET pair system while you were in the band?</legend>
+            <p class="field-help">Because you selected a RAT year before 1990, we will only ask about VETs and RATs if the pair system applied to you.</p>
+            <label><input type="radio" name="legacy-system" value="yes"> Yes</label>
+            <label><input type="radio" name="legacy-system" value="no"> No</label>
+          </fieldset>
+
+          <div id="relationship-questions" hidden>
+            <section class="question-block">
+              <h3>Who is your VET, what is their section, and what is their RAT year?</h3>
+              <div class="relationship-entry vet-entry">
+                <label>
+                  <span class="sr-only">VET Name</span>
+                  <input id="vet-name" type="text" placeholder="VET Name" autocomplete="off">
+                </label>
+                <label>
+                  <span class="sr-only">VET Section</span>
+                  <select id="vet-section"><option value="">Section</option></select>
+                </label>
+                <label>
+                  <span class="sr-only">VET RAT Year</span>
+                  <select id="vet-year"><option value="">RAT Year</option></select>
+                </label>
+              </div>
+              <div id="vet-match-panel" class="match-panel" hidden></div>
+            </section>
+
+            <section id="rats-question" class="question-block" hidden>
+              <div class="question-heading-row">
+                <div>
+                  <h3>List all your RATs</h3>
+                  <p class="field-help">If you do not have a RAT, leave the row blank and continue.</p>
+                </div>
+              </div>
+              <div id="rat-rows" class="relationship-list"></div>
+              <button id="add-rat" class="secondary-button icon-button" type="button"><span aria-hidden="true">＋</span> Add a RAT</button>
+            </section>
+          </div>
+
+          <div class="wizard-actions">
+            <button class="secondary-button" type="button" data-back>Back</button>
+            <button class="primary-button" type="button" data-next>Next</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="wizard-step" data-step="3" hidden>
+        <div class="wizard-card wizard-card-wide">
+          <p class="details-kicker">Tree preview</p>
+          <h2 id="preview-question">Does this look right?</h2>
+          <p id="preview-description" class="field-help"></p>
+          <div id="preview-tree" class="preview-tree" aria-label="Proposed family tree preview"></div>
+          <div id="preview-warning" class="match-panel warning-panel" hidden></div>
+
+          <div class="preview-confirmation">
+            <button id="preview-no" class="secondary-button" type="button">No — revise answers</button>
+            <button id="preview-yes" class="primary-button" type="button">Yes, this looks right</button>
+          </div>
+          <div class="wizard-actions">
+            <button class="secondary-button" type="button" data-back>Back</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="wizard-step" data-step="4" hidden>
+        <div class="wizard-card">
+          <p class="details-kicker">Stories and notes</p>
+          <h2>Anything else to add?</h2>
+
+          <fieldset class="choice-group">
+            <legend>Would you like to add notes to anyone’s entry you’ve included in your answers?</legend>
+            <label><input type="radio" name="add-notes" value="yes"> Yes</label>
+            <label><input type="radio" name="add-notes" value="no"> No</label>
+          </fieldset>
+          <div id="note-targets" class="note-targets" hidden></div>
+
+          <label class="form-field memory-field">
+            <span>What is your favorite Tech Band memory?</span>
+            <textarea id="favorite-memory" rows="6" placeholder="Share a favorite memory from your time in Tech Band."></textarea>
+            <small>This will appear on your tree profile as “Favorite Tech Band Memory.”</small>
+          </label>
+
+          <div class="wizard-actions">
+            <button class="secondary-button" type="button" data-back>Back</button>
+            <button class="primary-button" type="button" data-next>Review submission</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="wizard-step" data-step="5" hidden>
+        <div class="wizard-card">
+          <p class="details-kicker">Final review</p>
+          <h2>Ready to add this information?</h2>
+          <p>Review the summary below. You can still go back and change any answer.</p>
+          <div id="submission-summary" class="submission-summary"></div>
+          <div id="submission-github-note" class="form-guidance"></div>
+          <div id="turnstile-container" class="turnstile-container" aria-label="Abuse-prevention verification"></div>
+          <div class="wizard-actions">
+            <button class="secondary-button" type="button" data-back>Back</button>
+            <button id="submit-tree-request" class="primary-button" type="button">Submit update</button>
+          </div>
+        </div>
+      </section>
+    </form>
+  </main>
+
+  <div class="bug-report-slot page-footer-slot"></div>
+
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
+  <script src="secure-data.js"></script>
+  <script src="admin-mail.js"></script>
+  <script src="add-yourself.js"></script>
+</body>
+</html>

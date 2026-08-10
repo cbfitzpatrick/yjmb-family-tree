@@ -1,0 +1,20 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "yjmb-family-tree-api",
+	"main": "src/index.js",
+	"compatibility_date": "2026-08-09",
+	"vars": {
+		"ALLOWED_ORIGIN": "https://cbfitzpatrick.github.io",
+		"GITHUB_OWNER": "cbfitzpatrick",
+		"GITHUB_REPO": "yjmb-family-tree",
+		"GITHUB_BRANCH": "main",
+		"ADMIN_GITHUB_USER": "cbfitzpatrick",
+		"REVIEW_SCORE_THRESHOLD": "3"
+	},
+	"kv_namespaces": [
+		{
+			"binding": "ABUSE_KV",
+			"id": "a9aaaf1add32430bb77b2ca0ae89efc7"
+		}
+	]
+}

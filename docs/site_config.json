@@ -1,0 +1,7 @@
+{
+  "githubRepository": "cbfitzpatrick/yjmb-family-tree",
+  "adminEmail": "fitzcb2020@gmail.com",
+  "formSubmitRecipient": "fitzcb2020@gmail.com",
+  "workerApiBase": "https://yjmb-family-tree-api.funstuff.workers.dev",
+  "turnstileSiteKey": "0x4AAAAAAELkRPrzI2qp051h"
+}
