@@ -239,20 +239,26 @@ button { cursor: pointer; }
 }
 .viewport { position: relative; }
 .year-axis {
-  position: absolute;
+  position: fixed;
   left: 0;
   top: 0;
-  z-index: 18;
-  width: max-content;
+  z-index: 60;
+  width: 0;
+  height: 0;
+  overflow: hidden;
   pointer-events: none;
-  will-change: transform;
   box-shadow: 5px 0 10px rgba(0,0,0,.12);
+  contain: layout paint;
+}
+.year-axis-track {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 100%;
+  will-change: transform;
 }
 .sticky-year-label {
   position: absolute;
   left: 0;
-  width: max-content;
-  min-width: 3.6em;
   box-sizing: border-box;
   white-space: nowrap;
   display: grid;
@@ -264,6 +270,17 @@ button { cursor: pointer; }
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
+
+.leadership-key {
+  margin-top: 13px;
+  padding-top: 11px;
+  border-top: 1px solid #e4e4e7;
+}
+.leadership-key > strong { display: block; margin-bottom: 7px; font-size: 13px; }
+.leadership-icon-key { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; }
+.leadership-key-item { display: flex; align-items: center; gap: 7px; min-width: 0; font-size: 12px; }
+.leadership-key-item svg { width: 18px; height: 18px; flex: 0 0 18px; color: #111; }
+
 
 /* --- Add-yourself questionnaire --- */
 .questionnaire-page { background: #f4f4f5; }
@@ -425,8 +442,7 @@ button { cursor: pointer; }
 .sr-only { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0,0,0,0) !important; white-space: nowrap !important; border: 0 !important; }
 
 @media (max-width: 760px) {
-  .year-axis, .sticky-year-label { width: max-content; }
-  .sticky-year-label { min-width: 3.6em; font-size: 19px; }
+  .sticky-year-label { font-size: 19px; }
   .compact-field-grid, .band-fields { grid-template-columns: 1fr; }
   .relationship-entry, .vet-entry { grid-template-columns: 1fr; }
   .relationship-entry .remove-row-button { grid-column: 1; justify-self: end; }
@@ -543,3 +559,13 @@ button:disabled { cursor: wait; opacity: .65; }
   margin: 1rem 0 .25rem;
   min-height: 0;
 }
+
+/* Leadership icon overlays used on questionnaire preview cards. Final tree
+   cards contain the same symbols directly in the generated PNG. */
+.preview-leadership-icon { position: absolute; z-index: 4; width: 15px; height: 15px; color: #000; pointer-events: none; }
+.preview-leadership-icon svg { display: block; width: 100%; height: 100%; }
+.preview-leadership-icon.leadership-section-leader { left: 5px; top: 5px; }
+.preview-leadership-icon.leadership-drum-major { right: 5px; top: 5px; }
+.preview-leadership-icon.leadership-rat-parent { left: 5px; bottom: 5px; }
+.preview-leadership-icon.leadership-informal-leadership { right: 5px; bottom: 5px; }
+.preview-leadership-icon.leadership-other-leadership { right: 24px; bottom: 5px; }

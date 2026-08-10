@@ -4,6 +4,7 @@ import argparse, copy, json, os, re, tempfile, unicodedata
 from pathlib import Path
 from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter, range_boundaries
+from yjmb_taxonomy import canonical_formal_roles, informal_roles_from_text
 
 class ReviewRequired(Exception): pass
 
@@ -30,7 +31,7 @@ def discover(ws):
       'display':['treedisplaynamepreference'],'sectionNick':['sectionnicknames'],'specific':['specificinstruments'],
       'memory':['favoritetechbandmemory'],'otherFlag':['participatedinothergtensembles'],'otherList':['othergtensembles'],
       'otherInstFlag':['playeddifferentinstrumentinothergtensembles'],'otherInst':['othergtensembleinstruments'],
-      'leadership':['marchingbandleadershiproles'],'informalFlag':['servedininformalleadershipposition'],'informal':['informalleadershippositions'],
+      'leadership':['marchingbandleadershiproles'],'informalFlag':['servedininformalleadershipposition'],'informal':['informalleadershippositions'],'leadershipClass':['leadershippositionclassification'],
       'hasNick':['hasnickname'],'changed':['changedlastnamesinceband'],'multi':['hasbeeninmultiplesections'],'currentRat':['currentlyarat'],'pair':['ratvetpairsystemapplied']
     }
     out={}
@@ -128,7 +129,14 @@ def apply(workbook:Path, submission_file:Path):
     set_if(m,ws,row,'memory',norm(payload.get('favoriteTechBandMemory')) or None)
     set_if(m,ws,row,'otherFlag','Yes' if selfd.get('otherGtEnsembles') else 'No'); set_if(m,ws,row,'otherList',norm(selfd.get('otherGtEnsemblesList')) or None)
     set_if(m,ws,row,'otherInstFlag','Yes' if selfd.get('playedDifferentGtInstrument') else 'No'); set_if(m,ws,row,'otherInst',norm(selfd.get('otherGtInstruments')) or None)
-    set_if(m,ws,row,'leadership',', '.join(selfd.get('marchingBandLeadershipRoles') or []) or None); set_if(m,ws,row,'informalFlag','Yes' if selfd.get('informalLeadership') else 'No'); set_if(m,ws,row,'informal',norm(selfd.get('informalLeadershipDescription')) or None)
+    formal_roles=canonical_formal_roles(', '.join(selfd.get('marchingBandLeadershipRoles') or []))
+    informal_description=norm(selfd.get('informalLeadershipDescription')) if selfd.get('informalLeadership') else ''
+    informal_roles=informal_roles_from_text(informal_description)
+    set_if(m,ws,row,'leadership',', '.join(formal_roles) or None)
+    set_if(m,ws,row,'informalFlag','Yes' if selfd.get('informalLeadership') else 'No')
+    set_if(m,ws,row,'informal',informal_description or None)
+    classification='; '.join([*(f'Formal: {role}' for role in formal_roles), *(f'Informal: {role}' for role in informal_roles)])
+    set_if(m,ws,row,'leadershipClass',classification or None)
     set_if(m,ws,row,'hasNick','Yes' if selfd.get('hasNickname') else 'No'); set_if(m,ws,row,'changed','Yes' if selfd.get('changedLastName') else 'No'); set_if(m,ws,row,'multi','Yes' if selfd.get('multipleSections') else 'No'); set_if(m,ws,row,'currentRat','Yes' if selfd.get('currentlyRat') else 'No'); set_if(m,ws,row,'pair','Yes' if (payload.get('pairSystem') or {}).get('applies') else 'No')
     self_rel=relation(f'{given} {family}',year,instrument)
     if vet:

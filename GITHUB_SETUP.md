@@ -724,3 +724,9 @@ TURNSTILE_SECRET
 ```
 
 The entire point of the Worker/GitHub Actions split is that the browser and public source repository never need these secrets.
+
+## v15 local maintenance additions
+
+v15 does not change Worker or GitHub secret requirements. After upgrading, rebuild `docs/` and push the changed public files normally. The new cleanup tools are scan-only by default; see `README_V15_DATA_TOOLS.md`.
+
+The frozen RAT-year rail and leadership-card icons are frontend/generator changes only, so a Cloudflare Worker redeploy is not required for v15.

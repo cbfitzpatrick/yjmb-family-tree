@@ -302,6 +302,35 @@ function selectedLeadershipRoles() {
   return qa('input[name="leadership-role"]:checked').map((input) => input.value);
 }
 
+function leadershipIconKinds(formalRoles, hasInformal) {
+  const roles = new Set(formalRoles || []);
+  const kinds = [];
+  if (roles.has('Section Leader')) kinds.push('section-leader');
+  if (roles.has('Drum Major')) kinds.push('drum-major');
+  if (roles.has('RAT Parent')) kinds.push('rat-parent');
+  if (hasInformal) kinds.push('informal-leadership');
+  if ([...roles].some((role) => !['Section Leader', 'Drum Major', 'RAT Parent'].includes(role))) kinds.push('other-leadership');
+  return kinds;
+}
+
+function previewLeadershipIconSvg(kind) {
+  const attrs = 'viewBox="0 0 18 18" aria-hidden="true"';
+  if (kind === 'section-leader') return `<svg ${attrs}><path d="M2 4.5 9 1.5l7 3M2 9 9 6l7 3M2 13.5l7-3 7 3" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>`;
+  if (kind === 'drum-major') return `<svg ${attrs}><path d="M4 15 14.5 3.5M2 6l4-3M2 10l5-3" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="15" cy="3" r="2" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>`;
+  if (kind === 'rat-parent') return `<svg ${attrs}><circle cx="9" cy="3.5" r="2" fill="currentColor"/><circle cx="4" cy="14" r="2" fill="currentColor"/><circle cx="14" cy="14" r="2" fill="currentColor"/><path d="M9 5.5v4M4 9.5h10M4 9.5V12M14 9.5V12" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>`;
+  if (kind === 'informal-leadership') return `<svg ${attrs}><path d="M2 8.5 10 4v9L2 9.5Zm8-.8h2.5v1.8H10M5 10l2 5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M14 5.5 17 4M14 9h3.5M14 12.5l3 1.5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>`;
+  return `<svg ${attrs}><path d="m9 1.5 2.1 4.4 4.9.7-3.5 3.4.8 4.9L9 12.6l-4.3 2.3.8-4.9L2 6.6l4.9-.7Z" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>`;
+}
+
+function appendPreviewLeadershipIcons(card, kinds) {
+  for (const kind of kinds || []) {
+    const icon = document.createElement('span');
+    icon.className = `preview-leadership-icon leadership-${kind}`;
+    icon.innerHTML = previewLeadershipIconSvg(kind);
+    card.appendChild(icon);
+  }
+}
+
 function updateOtherGtEnsembleVisibility() {
   const hasOtherEnsembles = radioValue('other-gt-ensembles') === 'yes';
   q('#other-gt-ensemble-details').hidden = !hasOtherEnsembles;
@@ -951,6 +980,7 @@ function canonicalNodeFromPerson(person) {
     existing: true,
     image: person.card?.image || null,
     sourcePerson: person,
+    leadershipIcons: person.leadershipIcons || [],
   };
 }
 
@@ -987,6 +1017,7 @@ function proposedGraph() {
     parentId: null,
     existing: false,
     role: 'self',
+    leadershipIcons: leadershipIconKinds(submission.self.marchingBandLeadershipRoles, submission.self.informalLeadership),
   };
   nodes.set(selfId, selfNode);
 
@@ -1209,6 +1240,7 @@ function renderPreview() {
       name.textContent = node.name;
       card.appendChild(name);
     }
+    appendPreviewLeadershipIcons(card, node.leadershipIcons || []);
     stage.appendChild(card);
   }
 

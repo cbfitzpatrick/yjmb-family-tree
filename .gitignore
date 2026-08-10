@@ -39,3 +39,6 @@ queue_result.json
 # Legacy public-Issue processor/workflow.
 process_tree_submission.py
 .github/workflows/process-tree-submission.yml
+
+# Locally generated support/debug bundles.
+debug_bundles/
