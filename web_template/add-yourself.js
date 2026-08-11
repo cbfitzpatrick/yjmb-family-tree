@@ -1300,17 +1300,15 @@ function sectionGradient(sections) {
 }
 
 function line(svg, x1, y1, x2, y2, width = 6) {
-  for (const [color, strokeWidth] of [['#FFFFFF', width + 4], ['#000000', width]]) {
-    const el = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    el.setAttribute('x1', x1);
-    el.setAttribute('y1', y1);
-    el.setAttribute('x2', x2);
-    el.setAttribute('y2', y2);
-    el.setAttribute('stroke', color);
-    el.setAttribute('stroke-width', strokeWidth);
-    el.setAttribute('stroke-linecap', 'square');
-    svg.appendChild(el);
-  }
+  const el = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+  el.setAttribute('x1', x1);
+  el.setAttribute('y1', y1);
+  el.setAttribute('x2', x2);
+  el.setAttribute('y2', y2);
+  el.setAttribute('stroke', '#777777');
+  el.setAttribute('stroke-width', width);
+  el.setAttribute('stroke-linecap', 'square');
+  svg.appendChild(el);
 }
 
 function renderPreview() {

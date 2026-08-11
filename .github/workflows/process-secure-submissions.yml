@@ -39,15 +39,15 @@ jobs:
           files=(.secure_submissions/auto/*.enc.json)
           if (( ${#files[@]} == 0 )); then echo "has_files=false" >> "$GITHUB_OUTPUT"; else echo "has_files=true" >> "$GITHUB_OUTPUT"; fi
       - name: Set up Python
-        if: steps.queue.outputs.has_files == 'true'
+        if: steps.queue.outputs.has_files == 'true' || github.event_name == 'workflow_dispatch'
         uses: actions/setup-python@v6
         with:
           python-version: '3.12'
       - name: Install dependencies
-        if: steps.queue.outputs.has_files == 'true'
+        if: steps.queue.outputs.has_files == 'true' || github.event_name == 'workflow_dispatch'
         run: python -m pip install -r requirements.txt
       - name: Decrypt protected master workbook
-        if: steps.queue.outputs.has_files == 'true'
+        if: steps.queue.outputs.has_files == 'true' || github.event_name == 'workflow_dispatch'
         env:
           MASTER_WORKBOOK_KEY_B64: ${{ secrets.MASTER_WORKBOOK_KEY_B64 }}
         run: python secure_workbook.py decrypt --input secure/master_workbook.enc --output "YJMB Trees.xlsx"
@@ -58,7 +58,7 @@ jobs:
         run: python process_secure_queue.py --workbook "YJMB Trees.xlsx"
       - name: Inspect queue result
         id: result
-        if: steps.queue.outputs.has_files == 'true'
+        if: steps.queue.outputs.has_files == 'true' || github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
           python - <<'PY'
@@ -66,10 +66,12 @@ jobs:
           import os
           from pathlib import Path
 
-          result = json.loads(Path("queue_result.json").read_text(encoding="utf-8"))
+          result_path = Path("queue_result.json")
+          result = json.loads(result_path.read_text(encoding="utf-8")) if result_path.exists() else {}
           has_applied = "true" if result.get("applied") else "false"
           has_noop = "true" if result.get("noop") else "false"
-          should_sync = "true" if result.get("applied") or result.get("noop") else "false"
+          force_sync = os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch"
+          should_sync = "true" if result.get("applied") or result.get("noop") or force_sync else "false"
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
               handle.write(f"has_applied={has_applied}\n")
               handle.write(f"should_sync={should_sync}\n")
@@ -81,7 +83,20 @@ jobs:
         if: steps.result.outputs.should_sync == 'true'
         env:
           TREE_DATA_KEY_B64: ${{ secrets.TREE_DATA_KEY_B64 }}
-        run: python fullBandTreeGenerator.py --workbook "YJMB Trees.xlsx" --output-mode giant --skip-png --skip-svg --no-save-cards --skip-ambiguities
+        run: >-
+          python fullBandTreeGenerator.py
+          --workbook "YJMB Trees.xlsx"
+          --output-mode giant
+          --skip-png
+          --skip-svg
+          --no-save-cards
+          --skip-ambiguities
+          --cache "${{ runner.temp }}/yjmb_ci_resolutions.json"
+      - name: Verify protected workbook/site parity
+        if: steps.result.outputs.should_sync == 'true'
+        env:
+          TREE_DATA_KEY_B64: ${{ secrets.TREE_DATA_KEY_B64 }}
+        run: python verify_web_tree_parity.py --workbook "YJMB Trees.xlsx" --tree docs/data/tree_data.enc
       - name: Re-encrypt protected master workbook
         if: steps.result.outputs.has_applied == 'true'
         env:
@@ -91,7 +106,7 @@ jobs:
         if: always()
         run: rm -f "YJMB Trees.xlsx"
       - name: Commit protected update
-        if: steps.queue.outputs.has_files == 'true'
+        if: steps.queue.outputs.has_files == 'true' || steps.result.outputs.should_sync == 'true'
         run: |
           git config user.name "YJMB Protected Updater"
           git config user.email "actions@users.noreply.github.com"
