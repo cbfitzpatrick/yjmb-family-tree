@@ -68,10 +68,11 @@ FAMILY_GAP = 200
 # were full connected family trees. Connected families retain FAMILY_GAP.
 ISOLATED_PERSON_GAP = 55
 MIN_CANVAS_WIDTH = 900
-CONNECTOR_COLOR = "#000000"
-CONNECTOR_OUTLINE_COLOR = "#FFFFFF"
+CONNECTOR_COLOR = "#777777"
 CONNECTOR_WIDTH = 9
-CONNECTOR_OUTLINE_EXTRA = 4  # 2 px visible white border on each side
+# v17.4 restores the historical single gray connector stroke.
+CONNECTOR_OUTLINE_COLOR = None
+CONNECTOR_OUTLINE_EXTRA = 0
 UNKNOWN_COLOR = "#D3D3D3"
 DIVIDER_COLOR = "#555555"
 BACKGROUND_HEADER_COLOR = "#B3A369"
@@ -569,7 +570,10 @@ class PromptSession:
             for candidate in candidates:
                 if candidate.person_id == cached:
                     return candidate
-            if cached == "__skip__":
+            # A cached skip is an old ambiguity decision, not authoritative data.
+            # If the workbook now resolves to one exact candidate (for example after
+            # a person was added/fixed online), allow the current data to win.
+            if cached == "__skip__" and len(candidates) != 1:
                 return None
 
         if not candidates:
@@ -627,7 +631,7 @@ class PromptSession:
         key = child.person_id
         cached = self.cache["parents"].get(key)
         if isinstance(cached, str):
-            if cached == "__skip__":
+            if cached == "__skip__" and len(parents) > 1:
                 return None
             for parent in parents:
                 if parent.person_id == cached:
@@ -948,11 +952,8 @@ class Scene:
 
     @property
     def connector_outline_rects(self) -> list[tuple[int, int, int, int]]:
-        return [
-            segment.as_rect(CONNECTOR_WIDTH + CONNECTOR_OUTLINE_EXTRA)
-            for connector in self.connectors
-            for segment in connector.segments
-        ]
+        # v17.4: no white halo; keep this property for renderer compatibility.
+        return []
 
 
 def discover_headers(ws) -> tuple[int, dict[str, int], list[tuple[str, int]]]:
@@ -1202,14 +1203,16 @@ def load_people(
             continue
         year_raw = ws.cell(row, mapping["year"]).value
         year = prompts.resolve_year(year_raw, person_name=stable_name, row=row)
-        if year is None and (prompts.interactive or prompts.skip_ambiguities):
-            issues.skipped_people.append(
-                f"Row {row}, {stable_name}: omitted because RAT Year was unresolved/skipped."
+        if year is None:
+            # Never remove a workbook person from the website/admin data just because
+            # RAT Year is blank or ambiguous.  The layout already supports an
+            # Unknown Year band.  Omitting the row here made the encrypted site a
+            # lossy projection of the authoritative workbook and could also make
+            # otherwise valid RAT/VET references disappear.
+            issues.warn(
+                f"Row {row}, {stable_name}: RAT Year is unresolved; keeping the person "
+                "in the site/admin dataset in the Unknown Year band."
             )
-            print(
-                f"Skipped person: {stable_name} (row {row}) because no confident RAT Year was selected."
-            )
-            continue
         instrument_raw = normalize_spaces(ws.cell(row, mapping["instrument"]).value)
         instruments = normalize_instruments(
             instrument_raw,
@@ -1294,6 +1297,15 @@ def candidate_people_for_reference(
         year_matches = [person for person in candidates if person.year in reference.year_candidates]
         if year_matches:
             candidates = year_matches
+    if len(candidates) > 1 and reference.instrument_text:
+        ref_sections = {category for _, _, category in select_non_overlapping_matches(reference.instrument_text)[0]}
+        if ref_sections:
+            section_matches = [
+                person for person in candidates
+                if ref_sections.intersection(set(person.instruments) - {"unknown"})
+            ]
+            if section_matches:
+                candidates = section_matches
     if candidates:
         return sorted(candidates, key=lambda person: (person.year or 9999, person.row))
 
@@ -1371,23 +1383,22 @@ def build_relationships(
                         order=(0, person.row, 0),
                     )
                 else:
-                    # The workbook is never edited here; only the generated
-                    # representation drops the unresolved claim.
-                    person.vet_raw = ""
-                    clear_person_source_field(person, "VET")
+                    # Preserve the workbook claim in sourceFields/relationshipClaims.
+                    # Only the visual edge is omitted when it cannot be resolved.
+                    pass
             else:
                 issues.skipped_relations.append(
                     f"Row {person.row} VET: could not parse {person.vet_raw!r}"
                 )
 
-        retained_rat_raws: list[tuple[str, str]] = []
         for rat_index, (column_name, raw_rat) in enumerate(person.rat_raws, start=1):
             reference = parse_relation(raw_rat)
             if not reference or not reference.name:
                 issues.skipped_relations.append(
                     f"Row {person.row} {column_name}: could not parse {raw_rat!r}"
                 )
-                clear_person_source_field(person, column_name)
+                # Preserve the raw workbook cell for Admin Spreadsheet and the
+                # sidebar even when no visual edge can be built.
                 continue
             candidates = candidate_people_for_reference(
                 reference, people, strict_index, loose_index
@@ -1399,7 +1410,6 @@ def build_relationships(
                 candidates=candidates,
             )
             if child:
-                retained_rat_raws.append((column_name, raw_rat))
                 add_edge_source(
                     edge_sources,
                     person,
@@ -1408,8 +1418,10 @@ def build_relationships(
                     order=(1, person.row, rat_index),
                 )
             else:
-                clear_person_source_field(person, column_name)
-        person.rat_raws = retained_rat_raws
+                # Preserve the raw workbook claim; unresolved layout is not a data edit.
+                pass
+        # Do not replace rat_raws with only visually-resolved relationships.  The
+        # website/admin spreadsheet must remain a faithful view of the workbook.
 
     people_by_id = {person.person_id: person for person in people}
     possible_parents: dict[str, set[str]] = defaultdict(set)
@@ -1432,13 +1444,13 @@ def build_relationships(
         if chosen is not None:
             selected_edges.add((chosen.person_id, child.person_id))
         else:
-            # Remove every conflicting candidate from the generated/exported
-            # relationship model so a skipped ambiguity does not show up as an
-            # unreciprocated claim in the website sidebar.
+            # A visual tree has one parent slot, so omit conflicting visual edges.
+            # The workbook claims themselves remain intact and are still exported
+            # for the sidebar/Admin reciprocity tools.
             for parent_id in list(parent_ids):
                 edge_sources.pop((parent_id, child.person_id), None)
-            child.vet_raw = ""
-            clear_person_source_field(child, "VET")
+            # Keep the child's VET source field/claim visible even though the
+            # visual single-parent tree cannot choose among conflicting parents.
 
     for person in people:
         person.parent_id = None
@@ -1501,17 +1513,8 @@ def build_relationships(
                 if child_id in parent.children_ids:
                     parent.children_ids.remove(child_id)
                 selected_edges.remove((parent_id, child_id))
-                removed_sources = edge_sources.pop((parent_id, child_id), [])
-                for source in removed_sources:
-                    if source.order[0] == 0 and source.order[1] == child.row:
-                        child.vet_raw = ""
-                        clear_person_source_field(child, "VET")
-                    elif source.order[0] == 1 and source.order[1] == parent.row:
-                        rat_label = f"RAT {source.order[2]}"
-                        parent.rat_raws = [
-                            pair for pair in parent.rat_raws if pair[0] != rat_label
-                        ]
-                        clear_person_source_field(parent, rat_label)
+                edge_sources.pop((parent_id, child_id), None)
+                # Preserve workbook relationship claims even when chronology removes the visual edge.
 
     cycle = find_cycle(people)
     while cycle:
@@ -1535,17 +1538,8 @@ def build_relationships(
                     child.parent_id = None
                 if child_id in parent.children_ids:
                     parent.children_ids.remove(child_id)
-                removed_sources = edge_sources.pop((parent_id, child_id), [])
-                for source in removed_sources:
-                    if source.order[0] == 0 and source.order[1] == child.row:
-                        child.vet_raw = ""
-                        clear_person_source_field(child, "VET")
-                    elif source.order[0] == 1 and source.order[1] == parent.row:
-                        rat_label = f"RAT {source.order[2]}"
-                        parent.rat_raws = [
-                            pair for pair in parent.rat_raws if pair[0] != rat_label
-                        ]
-                        clear_person_source_field(parent, rat_label)
+                edge_sources.pop((parent_id, child_id), None)
+                # Preserve workbook relationship claims even when chronology removes the visual edge.
             issues.skipped_relations.append(
                 "Skipped all edges in relationship cycle: " + " | ".join(descriptions)
             )
@@ -1555,15 +1549,8 @@ def build_relationships(
             child = people_by_id[child_id]
             child.parent_id = None
             parent.children_ids.remove(child_id)
-            removed_sources = edge_sources.pop((parent_id, child_id), [])
-            for source in removed_sources:
-                if source.order[0] == 0 and source.order[1] == child.row:
-                    child.vet_raw = ""
-                    clear_person_source_field(child, "VET")
-                elif source.order[0] == 1 and source.order[1] == parent.row:
-                    rat_label = f"RAT {source.order[2]}"
-                    parent.rat_raws = [pair for pair in parent.rat_raws if pair[0] != rat_label]
-                    clear_person_source_field(parent, rat_label)
+            edge_sources.pop((parent_id, child_id), None)
+            # Preserve workbook claims; only this cycle's visual edge is removed.
         cycle = find_cycle(people)
 
     return people, edge_sources
@@ -2330,10 +2317,11 @@ def render_svg(
             f'dominant-baseline="middle">{html.escape(label)}</text>'
         )
 
-    lines.append(f'<g fill="{CONNECTOR_OUTLINE_COLOR}" shape-rendering="crispEdges">')
-    for x, y, width, height in scene.connector_outline_rects:
-        lines.append(f'<rect x="{x}" y="{y}" width="{width}" height="{height}"/>')
-    lines.append("</g>")
+    if scene.connector_outline_rects and CONNECTOR_OUTLINE_COLOR:
+        lines.append(f'<g fill="{CONNECTOR_OUTLINE_COLOR}" shape-rendering="crispEdges">')
+        for x, y, width, height in scene.connector_outline_rects:
+            lines.append(f'<rect x="{x}" y="{y}" width="{width}" height="{height}"/>')
+        lines.append("</g>")
     lines.append(f'<g fill="{CONNECTOR_COLOR}" shape-rendering="crispEdges">')
     for x, y, width, height in scene.connector_rects:
         lines.append(f'<rect x="{x}" y="{y}" width="{width}" height="{height}"/>')
@@ -2540,6 +2528,21 @@ def scene_to_web_data(
         # relationship is reciprocated in the two profiles.
         return {0, 1}.issubset(source_types_for_edge(parent_id, child_id))
 
+    # Relationship claims are data, while selected_edges are layout.  Resolve a
+    # claim independently so a safe visual-edge omission (conflicting parent,
+    # chronology, cycle) does not make an otherwise identifiable person vanish
+    # from the sidebar/Admin tools.
+    claim_strict_index, claim_loose_index = build_alias_indexes(scene.people)
+
+    def unique_claim_target(raw: str) -> Person | None:
+        parsed = parse_relation(raw)
+        if not parsed or not parsed.name:
+            return None
+        candidates = candidate_people_for_reference(
+            parsed, scene.people, claim_strict_index, claim_loose_index
+        )
+        return candidates[0] if len(candidates) == 1 else None
+
     def own_vet_claim(person: Person) -> dict[str, object] | None:
         if not person.vet_raw:
             return None
@@ -2551,6 +2554,9 @@ def scene_to_web_data(
             if any(source.order[0] == 0 and source.order[1] == person.row for source in sources):
                 resolved_parent_id = parent_id
                 break
+        if resolved_parent_id is None:
+            fallback = unique_claim_target(person.vet_raw)
+            resolved_parent_id = fallback.person_id if fallback else None
         related = people_by_id.get(resolved_parent_id) if resolved_parent_id else None
         reciprocal = bool(resolved_parent_id and edge_reciprocated(resolved_parent_id, person.person_id))
         stored_status = source_field_value(person, "VET Relationship Status")
@@ -2583,6 +2589,9 @@ def scene_to_web_data(
                 ):
                     resolved_child_id = child_id
                     break
+            if resolved_child_id is None:
+                fallback = unique_claim_target(raw_rat)
+                resolved_child_id = fallback.person_id if fallback else None
             related = people_by_id.get(resolved_child_id) if resolved_child_id else None
             reciprocal = bool(resolved_child_id and edge_reciprocated(person.person_id, resolved_child_id))
             stored_status = source_field_value(person, f"RAT {rat_index} Relationship Status")
@@ -2710,7 +2719,7 @@ def scene_to_web_data(
         )
 
     return {
-        "schemaVersion": 7,
+        "schemaVersion": 8,
         "sceneId": scene.scene_id,
         "title": scene.title,
         "width": scene.width,
@@ -2719,8 +2728,8 @@ def scene_to_web_data(
         "yearStripHeight": YEAR_STRIP_HEIGHT,
         "connectorColor": CONNECTOR_COLOR,
         "connectorWidth": CONNECTOR_WIDTH,
-        "connectorOutlineColor": CONNECTOR_OUTLINE_COLOR,
-        "connectorOutlineWidth": CONNECTOR_WIDTH + CONNECTOR_OUTLINE_EXTRA,
+        "connectorOutlineColor": None,
+        "connectorOutlineWidth": 0,
         "sectionColors": SECTION_COLORS,
         "yearBands": [
             {"label": label, "y": y, "color": color, "textColor": text_color}
@@ -2911,9 +2920,9 @@ def parse_args() -> argparse.Namespace:
         "--skip-ambiguities",
         action="store_true",
         help=(
-            "Automatically skip unresolved/ambiguous answers instead of prompting: "
-            "omit people with unresolved RAT years, omit ambiguous relationship edges, "
-            "and ignore unrecognized section fragments."
+            "Automatically skip unresolved/ambiguous layout decisions instead of prompting. "
+            "Workbook people and raw source fields are still preserved in the protected site/admin data; "
+            "ambiguous visual edges may be omitted and unrecognized section fragments ignored."
         ),
     )
     parser.add_argument(

@@ -165,8 +165,7 @@ function renderConnectors(data) {
     group.dataset.rootId = state.rootByPerson.get(connector.parentId) || '';
     const segments = [connector.parentStem, ...(connector.siblingBus ? [connector.siblingBus] : []), ...(connector.childStems || [])];
     for (const segment of segments) {
-      group.appendChild(svgLine(segment, data.connectorOutlineColor || '#FFFFFF', data.connectorOutlineWidth || ((data.connectorWidth || 9) + 4)));
-      group.appendChild(svgLine(segment, '#000000', data.connectorWidth || 9));
+      group.appendChild(svgLine(segment, '#777777', data.connectorWidth || 9));
     }
     connectorSvg.appendChild(group);
   }

@@ -75,8 +75,7 @@ function renderAdminTree() {
   for (const connector of state.data.connectors || []) {
     const segments = [connector.parentStem, ...(connector.siblingBus ? [connector.siblingBus] : []), ...(connector.childStems || [])].filter(Boolean);
     for (const segment of segments) {
-      svg.appendChild(relationLine(segment, state.data.connectorOutlineWidth || 13, '#fff'));
-      svg.appendChild(relationLine(segment, state.data.connectorWidth || 9, '#000'));
+      svg.appendChild(relationLine(segment, state.data.connectorWidth || 9, '#777777'));
     }
   }
 
