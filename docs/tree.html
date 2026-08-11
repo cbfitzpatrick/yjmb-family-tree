@@ -21,12 +21,15 @@
 
     <div class="toolbar-actions">
       <a class="add-yourself-link" href="add-yourself.html">Add yourself</a>
+      <a class="toolbar-icon-link" href="admin.html" aria-label="Admin mode" title="Admin mode">⚙</a>
+      <button id="info-button" class="toolbar-icon-button" type="button" aria-label="About this tree" title="About this tree">ⓘ</button>
       <button id="show-all-trees" class="secondary-button" type="button" hidden>Show full tree</button>
       <div class="zoom-controls" aria-label="Zoom controls">
         <button id="zoom-out" type="button" aria-label="Zoom out">−</button>
         <span id="zoom-label">100%</span>
         <button id="zoom-in" type="button" aria-label="Zoom in">+</button>
         <button id="zoom-reset" type="button">Reset</button>
+        <button id="zoom-fit" class="mobile-only-control" type="button">Fit</button>
       </div>
 
       <details id="visualizer" class="visualizer-menu">
@@ -35,19 +38,17 @@
           <div class="visualizer-heading">
             <div>
               <strong>Sections</strong>
-              <p>Show complete family trees that contain at least one person in any checked section.</p>
+              <p>Choose sections, then press Apply. A one-section view packs together every complete family tree containing at least one member of that section.</p>
             </div>
           </div>
           <div class="visualizer-buttons">
             <button id="sections-all" type="button">Select all</button>
             <button id="sections-none" type="button">Clear</button>
+            <button id="sections-apply" class="primary-button" type="button">Apply</button>
+            <button id="sections-load-full" type="button">Load full tree</button>
           </div>
           <div id="section-options" class="section-options"></div>
           <p id="filter-summary" class="filter-summary"></p>
-          <div class="leadership-key">
-            <strong>Card leadership icons</strong>
-            <div id="leadership-icon-key" class="leadership-icon-key"></div>
-          </div>
         </div>
       </details>
     </div>
@@ -92,6 +93,39 @@
 
     <a id="correction-link" class="correction-link" href="correction.html">Is something incorrect? Click here to make changes.</a>
   </aside>
+
+  <dialog id="info-dialog" class="info-dialog">
+    <div class="info-dialog-header">
+      <div>
+        <p class="details-kicker">YJMB Family Tree</p>
+        <h2>About this site</h2>
+      </div>
+      <button id="info-close" class="details-close" type="button" aria-label="Close information">×</button>
+    </div>
+    <div class="info-dialog-body">
+      <p>The tree is rendered directly in your browser from protected structured data. Cards no longer need to be generated as image files on a developer computer.</p>
+      <h3>Using the tree</h3>
+      <p>Search by name, personal nickname, section nickname, year, or section; click a card for the person's full stored profile; and use Visualizer to load section-specific family trees. The +/− controls keep the point currently centered in the viewport in focus while zooming.</p>
+      <h3>Cards and names</h3>
+      <p>Cards are constructed in the browser from protected structured data rather than pre-rendered person images. Members can choose Given/Preferred Name, Personal Nickname, or both for the card label. Personal nicknames and section nicknames are stored separately. Corner leadership/section badges are currently disabled; the GT cap marks a current RAT and the music-note badge marks Band Club leadership.</p>
+      <h3>Sections</h3>
+      <p>Broad section categories control the ordinary card colors while specific answers such as Alto Saxophone, Snare, Bass Drum, Rifle, Saber, or Flag are preserved. Drumline is treated as Battery and Pit as Front Ensemble.</p>
+      <p>When exactly one section is applied, every complete connected family containing at least one member of that section is shown and those trees are packed side-by-side. White cards are members only of the selected section, blue cards are relatives outside the selected section, and half-white/half-blue cards participated in the selected section plus another section.</p>
+      <h3>Relationships</h3>
+      <p>VET/RAT lines are black with a white outline for contrast. A member update records the relationship claimed on that person's profile; it does not silently edit the other person's row. Admin Mode lists one-sided connections for reciprocal validation.</p>
+      <h3>Leadership</h3>
+      <p>Marching-band leadership entries can be added/removed individually, classified as Formal or Informal, and may include optional year(s). Formal choices include Drum Major, Section Leader, Guard Captain, Staff Assistant, Operations, Props, Uniforms, Libraries, MCM, RAT Parent, and Other. Band Club leadership is tracked separately with its own optional position/year history.</p>
+      <h3>Updating information</h3>
+      <p><a href="add-yourself.html">Add yourself</a> is a direct-link page. Authenticated additions and profile corrections normally enter the protected automatic updater immediately; workbook conflicts are held rather than overwritten. Every applied change is written to the encrypted administrator changelog and can be safely reverted when no later edit conflicts.</p>
+      <p>Favorite Tech Band Memory and the rest of the profile live in the authoritative workbook. The protected site payload is rebuilt from that workbook, and the developer workbook export downloads the same updated workbook state, so the memory field is not an independent browser-only value.</p>
+      <h3>Administration</h3>
+      <p>Admin Mode uses the same separate developer key as protected workbook export, in addition to ordinary site access. It provides tree/card editing, a spreadsheet view, pending-request approval/denial, unreciprocated-connection validation, uncategorized-instrument mapping, encrypted changelog/revert, and workbook export. The admin key is kept only in memory for the open tab.</p>
+      <h3>Site-only publishing</h3>
+      <p>The project includes a UI-only publishing path that preserves the already-deployed encrypted tree bundle, allowing HTML/CSS/JavaScript changes without rebuilding tree data or touching the protected workbook.</p>
+      <h3>Privacy</h3>
+      <p>The public repository contains encrypted tree data rather than the plaintext master workbook. Access credentials, the developer key, workbook key, and tree decryption key are not stored in this page.</p>
+    </div>
+  </dialog>
 
   <div class="bug-report-slot bug-report-slot-tree"></div>
 

@@ -26,6 +26,7 @@ def fail(message: str) -> None:
 
 
 def tracked_files() -> list[Path]:
+    """Return Git-indexed files, failing closed if the index cannot be inspected."""
     try:
         result = subprocess.run(
             ["git", "ls-files"],
@@ -34,9 +35,15 @@ def tracked_files() -> list[Path]:
             capture_output=True,
             text=True,
         )
-    except (FileNotFoundError, subprocess.CalledProcessError):
-        return []
-    return [Path(line.strip()) for line in result.stdout.splitlines() if line.strip()]
+    except FileNotFoundError:
+        fail("Git is not available, so the public-repository privacy check cannot inspect the index.")
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or exc.stdout or str(exc)).strip()
+        fail(f"Could not inspect the Git index with 'git ls-files': {detail}")
+    files = [Path(line.strip()) for line in result.stdout.splitlines() if line.strip()]
+    if not files:
+        fail("Git index inspection returned no tracked files; refusing to treat that as a safe public repository.")
+    return files
 
 
 

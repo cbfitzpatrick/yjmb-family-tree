@@ -77,25 +77,18 @@ Hard rejection:
 - impossible RAT-year range;
 - malformed request.
 
-Risk scoring sends the submission to administrator review instead of auto-apply when the configured threshold is reached. Default threshold: 3.
+Risk scoring remains as protected audit metadata in v17 but does not create an administrator-approval gate for ordinary well-formed member changes. Hard failures (invalid session, failed configured Turnstile, malformed required fields, executable markup, or invalid payloads) are still rejected. Frequency and unusually large submissions remain visible to administrators as audit reasons.
 
-Signals include:
-
-- more than two submissions from the same privacy-hashed network source within an hour;
-- more than five within a day;
-- repeat submission of the same normalized name/year identity within seven days;
-- unusually large payload, notes, memories, RAT lists, or section lists;
-- URL-like or executable-markup patterns in free text;
-- suspicious submission volume.
-
-The GitHub Actions updater adds a second safety layer. Even a low-risk Worker submission is routed to review if the workbook discovers:
+The GitHub Actions updater is the workbook-aware fail-safe layer. It routes an encrypted request to review instead of overwriting data when it discovers conditions such as:
 
 - same-name/same-year duplicate self record;
-- matched RAT already has a different VET;
-- matched VET has no free RAT slot;
-- referenced matched row no longer exists;
+- stale correction data that changed after a form was loaded;
+- referenced rows that no longer exist;
 - more RATs than the workbook schema can represent;
+- reciprocal validation conflicts;
 - parsing/processing errors.
+
+Member VET/RAT submissions intentionally write only the submitter's side. The other profile is not silently modified; Admin Mode lists unreciprocated claims for explicit validation.
 
 ## Administrator review
 

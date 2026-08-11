@@ -81,7 +81,14 @@
     return `
       <section class="bug-report-section" aria-labelledby="bug-report-heading">
         <details>
-          <summary id="bug-report-heading">Report a bug</summary>
+          <summary id="bug-report-heading" class="bug-report-trigger" title="Report a bug" aria-label="Report a bug">
+            <svg class="bug-report-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M9 3h6M10 3l1-2m3 2-1-2M8 8 5 6M16 8l3-2M7 12H3m14 0h4M7 17l-3 2m13-2 3 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              <path d="M7.5 10.5c0-3 2-5 4.5-5s4.5 2 4.5 5v4.2c0 3-2 5.3-4.5 5.3s-4.5-2.3-4.5-5.3Z" fill="none" stroke="currentColor" stroke-width="1.8"/>
+              <path d="M8 13h8M12 6v13" fill="none" stroke="currentColor" stroke-width="1.4"/>
+            </svg>
+            <span class="sr-only">Report a bug</span>
+          </summary>
           <form class="bug-report-form">
             <p class="field-help">Found something on this website that is not working correctly? Send the admins a bug report.</p>
             <label class="form-field form-field-wide">

@@ -53,19 +53,20 @@
           </div>
 
           <fieldset class="choice-group">
-            <legend>Do you have a nickname?</legend>
+            <legend>Do you have a personal nickname?</legend>
             <label><input type="radio" name="has-nickname" value="yes"> Yes</label>
             <label><input type="radio" name="has-nickname" value="no"> No</label>
           </fieldset>
           <div id="nickname-details" class="nickname-details" hidden>
             <label class="form-field nickname-field">
-              <span>What is your nickname?</span>
-              <input id="self-nickname" type="text" placeholder="Nickname" autocomplete="nickname">
+              <span>What is your personal nickname?</span>
+              <input id="self-nickname" type="text" placeholder="Personal nickname" autocomplete="nickname">
             </label>
             <fieldset class="choice-group compact-choice-group">
               <legend>How should you be identified on your tree card?</legend>
-              <label><input type="radio" name="tree-name-preference" value="given"> Use my First/Preferred Name</label>
-              <label><input type="radio" name="tree-name-preference" value="nickname"> Use my Nickname</label>
+              <label><input type="radio" name="tree-name-preference" value="given"> First/Preferred Name — Chris Fitzpatrick</label>
+              <label><input type="radio" name="tree-name-preference" value="nickname"> Personal Nickname — "Weatherman" Fitzpatrick</label>
+              <label><input type="radio" name="tree-name-preference" value="both"> Both — Chris "Weatherman" Fitzpatrick</label>
             </fieldset>
           </div>
 
@@ -137,27 +138,23 @@
 
           <section class="question-block leadership-history-block">
             <h3>Marching band leadership</h3>
-            <fieldset class="choice-group leadership-role-group">
-              <legend>What formal leadership roles have you served in within the marching band?</legend>
-              <p class="field-help">Select all formal roles that apply. Leave all unchecked if none apply.</p>
-              <label><input type="checkbox" name="leadership-role" value="Drum Major"> Drum Major</label>
-              <label><input type="checkbox" name="leadership-role" value="Section Leader"> Section Leader</label>
-              <label><input type="checkbox" name="leadership-role" value="RAT Parent"> RAT Parent</label>
-              <label><input type="checkbox" name="leadership-role" value="Props"> Props</label>
-              <label><input type="checkbox" name="leadership-role" value="Operations"> Operations</label>
-              <label><input type="checkbox" name="leadership-role" value="MCM"> MCM</label>
-              <label><input type="checkbox" name="leadership-role" value="Staff Assistant"> Staff Assistant</label>
-            </fieldset>
+            <p class="field-help">Add each position separately. Choose Formal or Informal; year(s) are optional. Formal roles use the standard list, with Other available for anything not listed.</p>
+            <div id="leadership-entries" class="leadership-entry-list"></div>
+            <button id="add-leadership" class="secondary-button icon-button" type="button"><span aria-hidden="true">＋</span> Add leadership position</button>
+          </section>
 
+          <section class="question-block band-club-leadership-block">
+            <h3>Band Club leadership</h3>
             <fieldset class="choice-group compact-choice-group">
-              <legend>Have you served in any informal leadership positions in marching band?</legend>
-              <label><input type="radio" name="informal-leadership" value="yes"> Yes</label>
-              <label><input type="radio" name="informal-leadership" value="no"> No</label>
+              <legend>Have you held any Band Club leadership positions?</legend>
+              <label><input type="radio" name="band-club-leadership" value="yes"> Yes</label>
+              <label><input type="radio" name="band-club-leadership" value="no"> No</label>
             </fieldset>
-            <label id="informal-leadership-wrap" class="form-field experience-inline-field" hidden>
-              <span>What informal leadership have you done?</span>
-              <input id="informal-leadership-description" type="text" placeholder="e.g., Hype Man, mentor, unofficial coordinator, or another way you helped lead">
-            </label>
+            <div id="band-club-leadership-details" hidden>
+              <p class="field-help">List the position and optionally the year or range of years.</p>
+              <div id="band-club-leadership-entries" class="leadership-entry-list"></div>
+              <button id="add-band-club-leadership" class="secondary-button icon-button" type="button"><span aria-hidden="true">＋</span> Add Band Club position</button>
+            </div>
           </section>
 
           <fieldset id="legacy-system-group" class="choice-group" hidden>

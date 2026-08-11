@@ -43,7 +43,7 @@ from typing import Iterable, Iterator, Sequence
 from openpyxl import load_workbook
 from PIL import Image, ImageDraw, ImageFont
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from yjmb_taxonomy import leadership_icon_flags
+from yjmb_taxonomy import leadership_icon_flags, truthy
 
 # Large full-band charts can exceed Pillow's default decompression warning size.
 Image.MAX_IMAGE_PIXELS = None
@@ -64,9 +64,14 @@ RIGHT_MARGIN = 80
 TOP_CARD_PADDING = 0
 LEAF_GAP = 20
 FAMILY_GAP = 200
+# People with neither a VET nor a RAT are not visually separated as if they
+# were full connected family trees. Connected families retain FAMILY_GAP.
+ISOLATED_PERSON_GAP = 55
 MIN_CANVAS_WIDTH = 900
-CONNECTOR_COLOR = "#6F7890"
+CONNECTOR_COLOR = "#000000"
+CONNECTOR_OUTLINE_COLOR = "#FFFFFF"
 CONNECTOR_WIDTH = 9
+CONNECTOR_OUTLINE_EXTRA = 4  # 2 px visible white border on each side
 UNKNOWN_COLOR = "#D3D3D3"
 DIVIDER_COLOR = "#555555"
 BACKGROUND_HEADER_COLOR = "#B3A369"
@@ -100,15 +105,15 @@ SECTION_COLORS: dict[str, str] = {
 # Patterns are intentionally ordered from more specific to less specific.
 # Overlapping matches are resolved by keeping the longest match.
 INSTRUMENT_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
-    ("front ensemble", re.compile(r"\bfront\s+en(?:s|c)emble\b|\bpit\b", re.I)),
+    ("front ensemble", re.compile(r"\bfront\s+en(?:s|c)emble\b|\bpit\b|\bmarimbas?\b|\bvibraphones?\b|\bvibes?\b|\bxylophones?\b|\bglockenspiels?\b|\bbells?\b|\btimpani\b|\bkettledrums?\b|\brack\b|\baux(?:iliary)?\s+percussion\b|\bkeyboards?\b|\bsynth(?:esizer)?s?\b", re.I)),
     ("golden girl", re.compile(r"\bgolden\s+girls?\b", re.I)),
     ("goldrush", re.compile(r"\bgold\s*rush\b|\bgoldrush\b", re.I)),
-    ("guard", re.compile(r"\bcolor\s*guard\b|\bcolorguard\b|\bguard\b", re.I)),
+    ("guard", re.compile(r"\bcolor\s*guard\b|\bcolorguard\b|\bguard\b|\bflags?\b|\brifles?\b|\bsab(?:er|re)s?\b", re.I)),
     (
         "battery",
         re.compile(
             r"\bbattery\b|\bdrum\s*line\b|\bdrumline\b|\bsnares?\b|"
-            r"\b(?:marching\s+)?tenors?\b|\bquads?\b|\bquints?\b|"
+            r"\btenors\b|\btenor\s+drums?\b|\bquads?\b|\bquints?\b|"
             r"\bbass\s+drums?\b|\bcymbals?\b",
             re.I,
         ),
@@ -132,6 +137,7 @@ INSTRUMENT_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
 IGNORED_ROLE_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"\bdrum\s+majors?\b", re.I),
     re.compile(r"\bsection\s+leaders?\b", re.I),
+    re.compile(r"\b(?:color\s+guard\s+)?guard\s+captains?\b|\bcolor\s+guard\s+captains?\b", re.I),
     re.compile(r"\bcaptains?\b", re.I),
     re.compile(r"\bleadership\b", re.I),
 )
@@ -811,19 +817,58 @@ class Person:
 
     @property
     def current_name(self) -> str:
-        surname = self.married or self.family
+        married = normalize_spaces(self.married)
+        if married:
+            # Historical rows are not perfectly uniform: most Married Name
+            # cells contain only the current surname, but a few may already
+            # contain a full name. Avoid duplicating the given name in that case.
+            married_key = loose_name_key(married)
+            given_key = loose_name_key(self.given)
+            nickname_key = loose_name_key(self.nickname)
+            if (given_key and married_key.startswith(given_key)) or (nickname_key and married_key.startswith(nickname_key)):
+                return married
+        surname = married or self.family
         return normalize_spaces(f"{self.given} {surname}")
 
     @property
     def card_given_name(self) -> str:
         preference = normalized_header(self.tree_name_preference)
         if preference in {"nickname", "usenickname"} and self.nickname:
-            return self.nickname
+            return f'"{self.nickname}"'
+        if preference in {"both", "givenpreferrednickname", "givenpreferredandnickname", "firstnickname", "firstnameandnickname"} and self.nickname:
+            return normalize_spaces(f'{self.given} "{self.nickname}"')
         return self.given or self.nickname
 
     @property
     def card_display_name(self) -> str:
         return normalize_spaces(f"{self.card_given_name} {self.family}") or self.stable_name
+
+    @property
+    def currently_rat(self) -> bool:
+        return truthy(self.source_field_value("Currently a RAT", "Current RAT"))
+
+    @property
+    def band_club_leadership(self) -> bool:
+        return bool(
+            truthy(self.source_field_value("Served in Band Club Leadership Position", "Band Club Leadership"))
+            or self.source_field_value("Band Club Leadership Position(s)", "Band Club Leadership History")
+        )
+
+    @property
+    def favorite_tech_band_memory(self) -> str:
+        return self.source_field_value("Favorite Tech Band Memory")
+
+    @property
+    def section_nicknames(self) -> str:
+        return self.source_field_value("Section Nicknames", "Section Nickname(s)")
+
+    @property
+    def marching_band_leadership_history(self) -> str:
+        return self.source_field_value("Marching Band Leadership History")
+
+    @property
+    def band_club_leadership_history(self) -> str:
+        return self.source_field_value("Band Club Leadership History")
 
     def source_field_value(self, *labels: str) -> str:
         wanted = {normalized_header(label) for label in labels}
@@ -897,6 +942,14 @@ class Scene:
     def connector_rects(self) -> list[tuple[int, int, int, int]]:
         return [
             segment.as_rect(CONNECTOR_WIDTH)
+            for connector in self.connectors
+            for segment in connector.segments
+        ]
+
+    @property
+    def connector_outline_rects(self) -> list[tuple[int, int, int, int]]:
+        return [
+            segment.as_rect(CONNECTOR_WIDTH + CONNECTOR_OUTLINE_EXTRA)
             for connector in self.connectors
             for segment in connector.segments
         ]
@@ -1000,9 +1053,18 @@ def normalize_instruments(
         for position in range(start, end):
             covered[position] = True
 
+    # v16 normalized values use an em/en dash to separate the canonical broad
+    # section from preserved subsection detail (for example, ``Trumpet —
+    # Flugelhorn``). Once a broad section has been recognized, that detail is
+    # descriptive data, not a second section that needs a color decision.
+    if matches:
+        for detail_match in re.finditer(r"[—–][^;]*", raw):
+            for position in range(detail_match.start(), detail_match.end()):
+                covered[position] = True
+
     residual_chars = [char if not covered[index] else " " for index, char in enumerate(raw)]
     residual = "".join(residual_chars)
-    residual = re.sub(r"[,;/&+|()\-]+", " ", residual)
+    residual = re.sub(r"[,;/&+|():_—–\-]+", " ", residual)
     words = [word for word in normalize_spaces(residual).split() if word.casefold() not in RESIDUAL_STOPWORDS]
 
     if words:
@@ -1026,6 +1088,34 @@ def normalize_instruments(
         if category not in result:
             result.append(category)
     return result or ["unknown"]
+
+
+def uncategorized_instrument_text(raw_value: object) -> str:
+    """Return meaningful instrument text not explained by the section taxonomy.
+
+    This is exported for the administrator's unknown-instrument queue. Preserved
+    subsection detail after a canonical dash (for example ``Trumpet — Flugelhorn``)
+    is intentionally not flagged because the broad section is already known.
+    """
+    raw = normalize_spaces(raw_value)
+    if not raw:
+        return ""
+    matches, ignored = select_non_overlapping_matches(raw)
+    covered = [False] * len(raw)
+    for start, end, _ in matches:
+        for position in range(start, end):
+            covered[position] = True
+    for start, end in ignored:
+        for position in range(start, end):
+            covered[position] = True
+    if matches:
+        for detail_match in re.finditer(r"[—–][^;]*", raw):
+            for position in range(detail_match.start(), detail_match.end()):
+                covered[position] = True
+    residual = "".join(char if not covered[index] else " " for index, char in enumerate(raw))
+    residual = re.sub(r"[,;/&+|():_—–\-]+", " ", residual)
+    words = [word for word in normalize_spaces(residual).split() if word.casefold() not in RESIDUAL_STOPWORDS]
+    return " ".join(words)
 
 
 def parse_relation(raw_value: object) -> RelationReference | None:
@@ -1071,6 +1161,14 @@ def load_people(
         (column, normalize_spaces(ws.cell(header_row, column).value) or f"Column {column}")
         for column in range(1, ws.max_column + 1)
     ]
+    header_keys = {normalized_header(label) for _, label in ordered_headers}
+    if normalized_header("Favorite Tech Band Memory") not in header_keys:
+        workbook.close()
+        raise TreeDataError(
+            "The v17 workbook field 'Favorite Tech Band Memory' is missing. "
+            "Run migrateWorkbookV17.py --apply first so memories cannot be silently dropped "
+            "between the workbook, encrypted website data, and protected workbook export."
+        )
 
     # Confirm the current J:P relationship layout without hard-coding it.
     relationship_columns = [mapping["vet"], *(column for _, column in rat_columns)]
@@ -1570,10 +1668,22 @@ def assign_x_positions(
             sum(x_positions[child.person_id] for child in children) / len(children)
         )
 
-    for root in sorted(roots, key=root_visual_order):
+    ordered_roots = sorted(roots, key=root_visual_order)
+
+    def isolated(person: Person) -> bool:
+        return person.parent_id is None and not any(
+            child_id in included for child_id in person.children_ids
+        )
+
+    for index, root in enumerate(ordered_roots):
         place(root)
-        cursor += FAMILY_GAP
-    width = max(MIN_CANVAS_WIDTH, cursor - FAMILY_GAP + RIGHT_MARGIN)
+        if index + 1 < len(ordered_roots):
+            next_root = ordered_roots[index + 1]
+            # An isolated card has neither a VET nor a RAT, so do not give it
+            # the same whitespace as two complete family trees. If either side
+            # of the boundary is isolated, use the compact gap.
+            cursor += ISOLATED_PERSON_GAP if isolated(root) or isolated(next_root) else FAMILY_GAP
+    width = max(MIN_CANVAS_WIDTH, cursor + RIGHT_MARGIN)
     return x_positions, width
 
 
@@ -1820,6 +1930,9 @@ def _icon_box(card: Image.Image, kind: str) -> tuple[int, int, int, int]:
     margin = LEADERSHIP_ICON_MARGIN
     positions = {
         "section-leader": (margin, margin),
+        # Guard Captain is the color guard analogue of Section Leader and
+        # shares the upper-left leadership area as an inward flag badge.
+        "guard-captain": (margin + size + 4, margin),
         "drum-major": (card.width - margin - size, margin),
         "rat-parent": (margin, card.height - margin - size),
         "informal-leadership": (card.width - margin - size, card.height - margin - size),
@@ -1836,6 +1949,18 @@ def _draw_section_leader(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, in
     for offset in (2, 6, 10):
         y = y0 + offset
         draw.line([(x0 + 2, y + 3), (cx, y), (x1 - 2, y + 3)], fill="black", width=2)
+
+
+def _draw_guard_captain(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int]) -> None:
+    """Draw a compact black color-guard flag badge."""
+    x0, y0, x1, y1 = box
+    pole_x = x0 + 4
+    draw.line([(pole_x, y0 + 1), (pole_x, y1 - 1)], fill="black", width=2)
+    draw.polygon(
+        [(pole_x + 1, y0 + 2), (x1 - 1, y0 + 5), (pole_x + 1, y0 + 9)],
+        fill="black",
+    )
+    draw.line([(x0 + 1, y1 - 1), (x0 + 8, y1 - 1)], fill="black", width=1)
 
 
 def _draw_drum_major(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int]) -> None:
@@ -1892,6 +2017,7 @@ def draw_leadership_icons(card: Image.Image, person: Person) -> None:
     draw = ImageDraw.Draw(card)
     drawers = {
         "section-leader": _draw_section_leader,
+        "guard-captain": _draw_guard_captain,
         "drum-major": _draw_drum_major,
         "rat-parent": _draw_rat_parent,
         "informal-leadership": _draw_informal_leadership,
@@ -1901,6 +2027,66 @@ def draw_leadership_icons(card: Image.Image, person: Person) -> None:
         drawer = drawers.get(kind)
         if drawer:
             drawer(draw, _icon_box(card, kind))
+
+
+RAT_CAP_ICON_PATH = SCRIPT_DIR / "web_template" / "rat-cap-icon.png"
+_RAT_CAP_ICON_CACHE: Image.Image | None = None
+
+
+def _rat_cap_icon(size: tuple[int, int] = (28, 18)) -> Image.Image | None:
+    global _RAT_CAP_ICON_CACHE
+    if _RAT_CAP_ICON_CACHE is None:
+        if not RAT_CAP_ICON_PATH.exists():
+            return None
+        _RAT_CAP_ICON_CACHE = Image.open(RAT_CAP_ICON_PATH).convert("RGBA")
+    icon = _RAT_CAP_ICON_CACHE.copy()
+    icon.thumbnail(size, Image.Resampling.LANCZOS)
+    return icon
+
+
+def _draw_band_club_icon(draw: ImageDraw.ImageDraw, card: Image.Image) -> None:
+    """Minimal Band Club badge: a music note inside an organization ring."""
+    size = 17
+    x0 = card.width - size - 5
+    y0 = card.height - size - 5
+    x1 = x0 + size
+    y1 = y0 + size
+    draw.ellipse((x0, y0, x1, y1), outline="black", width=1)
+    stem_x = x0 + 10
+    draw.line((stem_x, y0 + 4, stem_x, y0 + 11), fill="black", width=2)
+    draw.line((stem_x, y0 + 4, x0 + 14, y0 + 3), fill="black", width=2)
+    draw.ellipse((x0 + 5, y0 + 10, x0 + 10, y0 + 14), fill="black")
+
+
+def draw_card_status_icons(card: Image.Image, person: Person) -> None:
+    """Draw only the v17 non-leadership status badges.
+
+    Existing section/formal/informal leadership corner icons are intentionally
+    disabled. The RAT cap supplied by the project owner marks a current RAT,
+    and Band Club leadership uses a separate music-club badge.
+    """
+    if person.currently_rat:
+        icon = _rat_cap_icon()
+        if icon is not None:
+            card.alpha_composite(icon, (card.width - icon.width - 5, 4))
+    if person.band_club_leadership:
+        _draw_band_club_icon(ImageDraw.Draw(card), card)
+
+def create_card_geometry(person: Person, size: tuple[int, int]) -> CardObject:
+    """Create only card geometry/section metadata for browser-only builds.
+
+    The encrypted website renders names, fills, and status badges in the browser.
+    When PNG/SVG/card files are all disabled, there is no reason to render a
+    personalized Pillow card locally. A transparent template-sized geometry surface keeps
+    the original placement/connector math unchanged without creating member art.
+    """
+    categories = person.instruments or ["unknown"]
+    colors = [SECTION_COLORS.get(category, UNKNOWN_COLOR) for category in categories]
+    return CardObject(
+        person_id=person.person_id,
+        image=Image.new("RGBA", size, (0, 0, 0, 0)),
+        section_colors=colors,
+    )
 
 
 def create_person_card(
@@ -1955,7 +2141,7 @@ def create_person_card(
         draw.text((x, current_y), line, font=font, fill="black")
         current_y += line_height + gap
 
-    draw_leadership_icons(card, person)
+    draw_card_status_icons(card, person)
 
     return CardObject(
         person_id=person.person_id,
@@ -2059,6 +2245,9 @@ def render_png(
         text_y = sy + (strip_height - (box[3] - box[1])) // 2 - round(3 * scale)
         draw.text((round(25 * scale), text_y), label, font=font, fill=text_color)
 
+    for rect in scene.connector_outline_rects:
+        x, y, rect_width, rect_height = scaled_rect(rect, scale)
+        draw.rectangle((x, y, x + rect_width - 1, y + rect_height - 1), fill=CONNECTOR_OUTLINE_COLOR)
     for rect in scene.connector_rects:
         x, y, rect_width, rect_height = scaled_rect(rect, scale)
         draw.rectangle((x, y, x + rect_width - 1, y + rect_height - 1), fill=CONNECTOR_COLOR)
@@ -2141,11 +2330,13 @@ def render_svg(
             f'dominant-baseline="middle">{html.escape(label)}</text>'
         )
 
+    lines.append(f'<g fill="{CONNECTOR_OUTLINE_COLOR}" shape-rendering="crispEdges">')
+    for x, y, width, height in scene.connector_outline_rects:
+        lines.append(f'<rect x="{x}" y="{y}" width="{width}" height="{height}"/>')
+    lines.append("</g>")
     lines.append(f'<g fill="{CONNECTOR_COLOR}" shape-rendering="crispEdges">')
     for x, y, width, height in scene.connector_rects:
-        lines.append(
-            f'<rect x="{x}" y="{y}" width="{width}" height="{height}"/>'
-        )
+        lines.append(f'<rect x="{x}" y="{y}" width="{width}" height="{height}"/>')
     lines.append("</g>")
 
     uri_cache: dict[str, str] = {}
@@ -2366,6 +2557,7 @@ def scene_to_web_data(
         status = (stored_status if stored_status.casefold().startswith("reciprocated") else "Reciprocated — validated on both profiles") if reciprocal else (stored_status or "Unreciprocated — pending validation")
         return {
             "role": "VET",
+            "raw": person.vet_raw,
             "id": resolved_parent_id,
             "name": related.stable_name if related else (parsed.name if parsed else person.vet_raw),
             "ratYear": related.year if related else ((parsed.year_candidates[0] if parsed and parsed.year_candidates else None)),
@@ -2397,6 +2589,7 @@ def scene_to_web_data(
             status = (stored_status if stored_status.casefold().startswith("reciprocated") else "Reciprocated — validated on both profiles") if reciprocal else (stored_status or "Unreciprocated — pending validation")
             claims.append({
                 "role": "RAT",
+                "raw": raw_rat,
                 "slot": column_name,
                 "id": resolved_child_id,
                 "name": related.stable_name if related else (parsed.name if parsed else raw_rat),
@@ -2469,11 +2662,20 @@ def scene_to_web_data(
                 "treeDisplayNamePreference": person.tree_name_preference or "Given/Preferred Name",
                 "familyMaidenName": person.family,
                 "marriedName": person.married,
+                "personalNickname": person.nickname,
+                "sectionNicknames": person.section_nicknames,
+                "favoriteTechBandMemory": person.favorite_tech_band_memory,
+                "marchingBandLeadershipHistory": person.marching_band_leadership_history,
+                "bandClubLeadershipHistory": person.band_club_leadership_history,
+                "currentlyRat": person.currently_rat,
+                "bandClubLeadership": person.band_club_leadership,
                 "ratYear": person.year,
                 "ratYearLabel": person.year_label,
                 "instrumentRaw": person.instrument_raw,
                 "instruments": person.instruments,
+                "uncategorizedInstrumentText": uncategorized_instrument_text(person.instrument_raw),
                 "leadershipIcons": person.leadership_icons,
+                "leadershipIconsEnabled": False,
                 "parentId": person.parent_id,
                 "childrenIds": person.children_ids,
                 "sourceFields": person.source_fields,
@@ -2486,7 +2688,10 @@ def scene_to_web_data(
                     "y": placement.y,
                     "width": card.width,
                     "height": card.height,
-                    "image": card_data_uri(card),
+                    # v17 cards are rendered from structured data in the browser.
+                    # No pre-rendered per-person image is required in the encrypted
+                    # website payload, so site-only updates never depend on local
+                    # card PNG generation.
                     "sectionColors": card.section_colors,
                     "localVetConnection": card.local_vet_connection.as_dict(),
                     "globalVetConnection": (
@@ -2505,7 +2710,7 @@ def scene_to_web_data(
         )
 
     return {
-        "schemaVersion": 6,
+        "schemaVersion": 7,
         "sceneId": scene.scene_id,
         "title": scene.title,
         "width": scene.width,
@@ -2514,6 +2719,8 @@ def scene_to_web_data(
         "yearStripHeight": YEAR_STRIP_HEIGHT,
         "connectorColor": CONNECTOR_COLOR,
         "connectorWidth": CONNECTOR_WIDTH,
+        "connectorOutlineColor": CONNECTOR_OUTLINE_COLOR,
+        "connectorOutlineWidth": CONNECTOR_WIDTH + CONNECTOR_OUTLINE_EXTRA,
         "sectionColors": SECTION_COLORS,
         "yearBands": [
             {"label": label, "y": y, "color": color, "textColor": text_color}
@@ -2602,6 +2809,7 @@ def export_github_pages_site(
         "tree.html",
         "correction.html",
         "add-yourself.html",
+        "admin.html",
         "styles.css",
         "gate.css",
         "gate.js",
@@ -2610,7 +2818,9 @@ def export_github_pages_site(
         "app.js",
         "correction.js",
         "add-yourself.js",
+        "admin.js",
         "admin-mail.js",
+        "rat-cap-icon.png",
         "site_config.json",
     )
     missing_templates = [template_dir / name for name in template_names if not (template_dir / name).exists()]
@@ -2796,16 +3006,39 @@ def main() -> int:
     if not roots:
         raise TreeDataError("No tree roots were found after resolving relationships.")
 
-    template = Image.open(template_path).convert("RGBA")
-    fill_mask, fill_bounds = template_fill_mask(template)
+    # Browser-only site builds do not render personalized card images locally.
+    # Pillow cards are created only when a local PNG/SVG/card artifact is requested.
+    render_local_card_art = not (args.no_save_cards and args.skip_png and args.skip_svg)
+    template = None
+    fill_mask = None
+    fill_bounds = None
+    geometry_size: tuple[int, int] | None = None
+    if render_local_card_art:
+        template = Image.open(template_path).convert("RGBA")
+        fill_mask, fill_bounds = template_fill_mask(template)
+    else:
+        # Read only the template dimensions so historic/custom geometry stays intact;
+        # no personalized card image is painted in the site-build path.
+        with Image.open(template_path) as template_probe:
+            geometry_size = template_probe.size
+
+    card_size = template.size if template is not None else geometry_size
+    assert card_size is not None
+    card_width, card_height = card_size
+
     cards: dict[str, CardObject] = {}
     for index, person in enumerate(people, start=1):
-        card = create_person_card(
-            person,
-            template=template,
-            fill_mask=fill_mask,
-            fill_bounds=fill_bounds,
-        )
+        if render_local_card_art:
+            assert template is not None and fill_mask is not None and fill_bounds is not None
+            card = create_person_card(
+                person,
+                template=template,
+                fill_mask=fill_mask,
+                fill_bounds=fill_bounds,
+            )
+        else:
+            assert geometry_size is not None
+            card = create_card_geometry(person, geometry_size)
         cards[person.person_id] = card
         if not args.no_save_cards:
             # Include the row-backed ID so same-name/same-year people never
@@ -2832,8 +3065,8 @@ def main() -> int:
             people,
             roots,
             cards=cards,
-            card_width=template.width,
-            card_height=template.height,
+            card_width=card_width,
+            card_height=card_height,
             is_full_tree=True,
         )
         stem = f"YJMB_Full_Band_Family_Tree_{latest_year_label}"
@@ -2882,8 +3115,8 @@ def main() -> int:
                 family_people,
                 [root],
                 cards=cards,
-                card_width=template.width,
-                card_height=template.height,
+                card_width=card_width,
+                card_height=card_height,
                 global_years=family_global_years,
                 is_full_tree=False,
             )

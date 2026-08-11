@@ -18,7 +18,8 @@ $GeneratorArgs = @(
     ".\fullBandTreeGenerator.py",
     "--output-mode", "giant",
     "--skip-png",
-    "--skip-svg"
+    "--skip-svg",
+    "--no-save-cards"
 )
 if ($SkipAmbiguities) { $GeneratorArgs += "--skip-ambiguities" }
 

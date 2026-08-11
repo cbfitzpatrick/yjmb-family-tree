@@ -95,6 +95,8 @@ def should_exclude(path: Path, root: Path, *, include_workbook: bool, include_ge
         return "local backup"
     if rel_posix.startswith(".secure_submissions/"):
         return "protected submission queue"
+    if rel_posix.startswith("secure/") and path.name != ".gitkeep":
+        return "protected encrypted member data"
     if path.name.startswith("~$"):
         return "Excel temporary owner file"
     if path.suffix.casefold() in {".xlsx", ".xls", ".xlsm", ".csv"} and not include_workbook:
@@ -148,7 +150,7 @@ def main() -> int:
             f"Excluded files: {len(excluded)}",
             "",
             "SECURITY NOTES",
-            "- access_secrets.json and Worker local secret files are always excluded.",
+            "- access_secrets.json, Worker local secret files, and protected secure/ payloads are always excluded.",
             "- Text files are scanned against known local secret values and common token patterns.",
             f"- Plaintext workbook/data included: {'YES' if args.include_workbook else 'NO'}",
             f"- Generated name-bearing images included: {'YES' if args.include_generated_images else 'NO'}",

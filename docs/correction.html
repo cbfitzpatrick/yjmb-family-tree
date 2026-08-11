@@ -10,7 +10,7 @@
   <header class="correction-header">
     <a class="back-link" href="tree.html">← Back to family tree</a>
     <h1>Correct tree details</h1>
-    <p>Update the fields that are incorrect. Your entry change request will be emailed to the tree admins for review before the master spreadsheet is changed.</p>
+    <p>Update any incorrect fields. In v17, ordinary authenticated corrections enter the protected automatic update workflow and every applied cell change is recorded in the administrator changelog for review and safe revert.</p>
   </header>
 
   <main class="correction-main">
@@ -30,8 +30,11 @@
         <textarea id="correction-context" rows="5" placeholder="Explain anything that is not obvious from the edited fields."></textarea>
       </label>
 
+      <p class="form-guidance">Relationship edits are recorded from this profile's side first. Admin mode surfaces any unreciprocated VET/RAT connection so the other side can be validated instead of being silently overwritten.</p>
+      <div id="turnstile-container" class="turnstile-container" aria-label="Abuse-prevention verification"></div>
+
       <div class="correction-actions">
-        <button id="send-correction" class="primary-button" type="submit">Send entry change request</button>
+        <button id="send-correction" class="primary-button" type="submit">Submit update</button>
         <span id="correction-send-status" class="bug-form-status" role="status" aria-live="polite"></span>
       </div>
     </form>
@@ -39,6 +42,7 @@
 
   <div class="bug-report-slot page-footer-slot"></div>
 
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
   <script src="secure-data.js"></script>
   <script src="admin-mail.js"></script>
   <script src="correction.js"></script>

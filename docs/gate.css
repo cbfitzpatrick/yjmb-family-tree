@@ -71,3 +71,12 @@ button, input { font: inherit; }
   .gate-content, .loading-content, .gate-form, .gate-transition, .asset-progress-bar { animation: none !important; transition-duration: .01ms !important; }
   .gate-content { opacity: 1; }
 }
+
+/* v16 phone touch targets; desktop gate remains unchanged. */
+@media (max-width: 820px), (pointer: coarse) and (max-width: 950px) {
+  .gate-content { width: min(760px, calc(100vw - 24px)); }
+  .gate-form { gap: 16px; }
+  .gate-form h1 { font-size: clamp(34px, 11vw, 58px); }
+  .gate-answer { width: min(440px, 94vw); min-height: 50px; font-size: 16px; }
+  .gate-submit { min-height: 46px; min-width: 116px; }
+}

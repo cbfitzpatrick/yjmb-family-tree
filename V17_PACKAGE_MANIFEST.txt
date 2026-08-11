@@ -1,0 +1,20 @@
+YJMB FAMILY TREE v17 CUMULATIVE DROP-IN
+
+Purpose
+- Install directly over the existing pre-v15/v14 project.
+- Includes all v15 + v16 cumulative upgrade files and the v17 replacements/additions.
+- Do NOT install v15 or v16 first.
+
+Intentionally excluded to protect existing configuration/data
+- YJMB Trees.xlsx and every other spreadsheet/CSV
+- access_secrets.json and local environment/secret files
+- web_template/site_config.json (preserve the user's configured Worker URL/email settings)
+- worker/wrangler.jsonc (preserve the user's Cloudflare account/KV configuration)
+- generated docs/data/tree_data.enc and other generated site data
+- secure/master_workbook.enc and encrypted member changelog/submission contents
+- .git metadata, virtual environments, node_modules, caches
+
+Important
+- v17 DOES change worker/src/index.js, so deploy the Worker after overlaying this package.
+- v17 adds workbook columns additively through migrateWorkbookV17.py; it never replaces the workbook.
+- Root README.md is intentionally minimal. Operational/security detail lives in the supplemental docs and the site's info dialog.

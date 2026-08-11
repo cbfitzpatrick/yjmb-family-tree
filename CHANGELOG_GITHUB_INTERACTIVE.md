@@ -16,3 +16,7 @@ Earlier v3-v11 plaintext/public-card and public-Issue submission designs are als
 - high-confidence leadership-from-notes scanner;
 - fixed, non-jittering RAT-year rail with a safe left content gutter;
 - secret-safe debugging ZIP generator.
+
+## v17
+
+v17 moves public card rendering into the browser, adds the protected administrator workspace and encrypted revertible changelog, makes ordinary authenticated member corrections/additions automatic subject to workbook conflict safety, separates personal/section nicknames, expands leadership history/Band Club fields, adds single-section family packing/color mode, and adds UI-only publishing that preserves the deployed encrypted tree payload. See `CHANGELOG_V17.md`.
