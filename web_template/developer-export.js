@@ -35,6 +35,12 @@
     }
   }
 
+
+  function openAdminMode() {
+    const base = location.pathname.replace(/[^/]*$/, '');
+    location.assign(`${base}admin.html`);
+  }
+
   // Intentionally no visible developer button. The key chord is merely a
   // convenience/discovery mechanism; authorization is enforced server-side by
   // the independent DEVELOPER_EXPORT_KEY and a valid normal access session.
@@ -42,9 +48,15 @@
     if (event.ctrlKey && event.altKey && event.shiftKey && event.code === 'KeyE') {
       event.preventDefault();
       void runDeveloperExport();
+      return;
+    }
+    if (event.ctrlKey && event.altKey && event.shiftKey && event.code === 'KeyA') {
+      event.preventDefault();
+      openAdminMode();
     }
   });
 
   // Optional console command for the site owner.
   window.YJMBDeveloperExport = runDeveloperExport;
+  window.YJMBAdminMode = openAdminMode;
 })();

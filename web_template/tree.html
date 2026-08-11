@@ -21,8 +21,8 @@
 
     <div class="toolbar-actions">
       <a class="add-yourself-link" href="add-yourself.html">Add yourself</a>
-      <a class="toolbar-icon-link" href="admin.html" aria-label="Admin mode" title="Admin mode">⚙</a>
       <button id="info-button" class="toolbar-icon-button" type="button" aria-label="About this tree" title="About this tree">ⓘ</button>
+      <div class="bug-report-slot bug-report-slot-tree toolbar-bug-slot"></div>
       <button id="show-all-trees" class="secondary-button" type="button" hidden>Show full tree</button>
       <div class="zoom-controls" aria-label="Zoom controls">
         <button id="zoom-out" type="button" aria-label="Zoom out">−</button>
@@ -107,19 +107,19 @@
       <h3>Using the tree</h3>
       <p>Search by name, personal nickname, section nickname, year, or section; click a card for the person's full stored profile; and use Visualizer to load section-specific family trees. The +/− controls keep the point currently centered in the viewport in focus while zooming.</p>
       <h3>Cards and names</h3>
-      <p>Cards are constructed in the browser from protected structured data rather than pre-rendered person images. Members can choose Given/Preferred Name, Personal Nickname, or both for the card label. Personal nicknames and section nicknames are stored separately. Corner leadership/section badges are currently disabled; the GT cap marks a current RAT and the music-note badge marks Band Club leadership.</p>
+      <p>Cards are constructed in the browser from protected structured data rather than pre-rendered person images. Members can choose Given/Preferred Name, Personal Nickname, or both for the first-name portion of the card, and people with a changed surname can independently choose Family/Maiden Name, Married/Current Name, or both for the last-name portion. Personal nicknames and section nicknames are stored separately. Card icons are currently disabled; the prepared icon set is retained for later use.</p>
       <h3>Sections</h3>
-      <p>Broad section categories control the ordinary card colors while specific answers such as Alto Saxophone, Snare, Bass Drum, Rifle, Saber, or Flag are preserved. Drumline is treated as Battery and Pit as Front Ensemble.</p>
+      <p>Broad section categories control the ordinary card gradients while specific answers such as Alto Saxophone, Snare, Bass Drum, Rifle, Saber, or Flag are preserved. Drumline is treated as Battery and Pit as Front Ensemble.</p>
       <p>When exactly one section is applied, every complete connected family containing at least one member of that section is shown and those trees are packed side-by-side. White cards are members only of the selected section, blue cards are relatives outside the selected section, and half-white/half-blue cards participated in the selected section plus another section.</p>
       <h3>Relationships</h3>
-      <p>VET/RAT lines are black with a white outline for contrast. A member update records the relationship claimed on that person's profile; it does not silently edit the other person's row. Admin Mode lists one-sided connections for reciprocal validation.</p>
+      <p>VET/RAT lines use the historical gray connector style. If a correction adds a RAT who is not yet in the directory, the protected updater creates that person's workbook row and writes the reciprocal VET at the same time. Claims involving an already-existing person remain one-sided until reciprocity is validated, so an existing profile is never silently overwritten.</p>
       <h3>Leadership</h3>
-      <p>Marching-band leadership entries can be added/removed individually, classified as Formal or Informal, and may include optional year(s). Formal choices include Drum Major, Section Leader, Guard Captain, Staff Assistant, Operations, Props, Uniforms, Libraries, MCM, RAT Parent, and Other. Band Club leadership is tracked separately with its own optional position/year history.</p>
+      <p>Marching-band leadership entries can be added/removed individually, classified as Formal or Informal, and may include optional year(s). Formal choices include Drum Major, Section Leader, Guard Captain, Staff Assistant, Operations, Props, Uniforms, Libraries, MCM, RAT Parent, and Other. Band Club leadership is tracked separately with its own optional position/year history. Card icons remain disabled for now; the prepared future set uses the supplied Section Leader and Band Club artwork, the supplied cap for RAT Parent/RAT Mom/RAT Dad, two black gloves for Drum Major, a camera for MCM, a book for Libraries, and a uniform for Uniforms.</p>
       <h3>Updating information</h3>
       <p><a href="add-yourself.html">Add yourself</a> is a direct-link page. Authenticated additions and profile corrections normally enter the protected automatic updater immediately; workbook conflicts are held rather than overwritten. Every applied change is written to the encrypted administrator changelog and can be safely reverted when no later edit conflicts.</p>
       <p>Favorite Tech Band Memory and the rest of the profile live in the authoritative workbook. The protected site payload is rebuilt from that workbook, and the developer workbook export downloads the same updated workbook state, so the memory field is not an independent browser-only value.</p>
       <h3>Administration</h3>
-      <p>Admin Mode uses the same separate developer key as protected workbook export, in addition to ordinary site access. It provides tree/card editing, a spreadsheet view, pending-request approval/denial, unreciprocated-connection validation, uncategorized-instrument mapping, encrypted changelog/revert, and workbook export. The admin key is kept only in memory for the open tab.</p>
+      <p>Admin Mode uses the same separate developer key as protected workbook export, in addition to ordinary site access. There is no visible Admin button; the site owner can open it with Ctrl+Alt+Shift+A or YJMBAdminMode() in the browser console. It provides tree/card editing, a spreadsheet view, pending-request approval/denial, unreciprocated-connection validation, uncategorized-instrument mapping, encrypted changelog/revert, and workbook export. The admin key is kept only in memory for the open tab.</p>
       <h3>Site-only publishing</h3>
       <p>The project includes a UI-only publishing path that preserves the already-deployed encrypted tree bundle, allowing HTML/CSS/JavaScript changes without rebuilding tree data or touching the protected workbook.</p>
       <h3>Privacy</h3>
@@ -127,7 +127,6 @@
     </div>
   </dialog>
 
-  <div class="bug-report-slot bug-report-slot-tree"></div>
 
   <script src="secure-data.js"></script>
   <script src="developer-export.js"></script>

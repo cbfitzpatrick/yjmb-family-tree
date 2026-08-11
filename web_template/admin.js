@@ -33,21 +33,48 @@ function htmlEscape(value) {
   return String(value ?? '').replace(/[&<>'"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[ch]));
 }
 
-function colorForSection(section) {
-  return state.data.sectionColors?.[section] || '#d9d9d9';
+function gradientForSection(section) {
+  const pair = state.data.sectionGradients?.[section];
+  if (Array.isArray(pair) && pair.length >= 2) return [pair[0], pair[1]];
+  const fallback = state.data.sectionColors?.[section] || '#d9d9d9';
+  return [fallback, fallback];
 }
 
 function cardBackground(person) {
-  const colors = (person.instruments || []).map(colorForSection).filter(Boolean);
-  if (!colors.length) return '#d9d9d9';
-  const unique = [...new Set(colors)];
-  if (unique.length === 1) return unique[0];
-  const stops = unique.flatMap((color, i) => {
-    const start = (100 * i / unique.length).toFixed(4);
-    const end = (100 * (i + 1) / unique.length).toFixed(4);
-    return [`${color} ${start}%`, `${color} ${end}%`];
+  const sections = (person.instruments || []).filter(Boolean);
+  if (!sections.length) return '#d9d9d9';
+  if (sections.length === 1) {
+    const [start, end] = gradientForSection(sections[0]);
+    return start === end ? start : `linear-gradient(135deg, ${start} 0%, ${end} 100%)`;
+  }
+  const stops = [];
+  sections.forEach((section, i) => {
+    const [startColor, endColor] = gradientForSection(section);
+    const start = (100 * i / sections.length).toFixed(4);
+    const end = (100 * (i + 1) / sections.length).toFixed(4);
+    stops.push(`${startColor} ${start}%`, `${endColor} ${end}%`);
   });
   return `linear-gradient(90deg, ${stops.join(', ')})`;
+}
+
+function adminCardNameParts(person) {
+  const given = norm(person.cardGivenName || person.givenPreferredName || person.displayName || person.name);
+  const family = norm(person.cardFamilyName || person.familyMaidenName);
+  if (family) return [given, family];
+  const words = norm(person.displayName || person.name).split(/\s+/).filter(Boolean);
+  return words.length > 1 ? [words.slice(0, -1).join(' '), words.at(-1)] : [words[0] || 'Unknown'];
+}
+
+function adminCardFontSize(person, sourceWidth = 150) {
+  const canvas = adminCardFontSize.canvas || (adminCardFontSize.canvas = document.createElement('canvas'));
+  const context = canvas.getContext('2d');
+  const lines = adminCardNameParts(person);
+  const base = 22;
+  if (!context) return base;
+  context.font = `${base}px Arial, Helvetica, sans-serif`;
+  const widest = Math.max(1, ...lines.map((line) => context.measureText(line).width));
+  const usable = Math.max(70, Number(sourceWidth || 150) - 44);
+  return Math.max(13, Math.min(base, Math.floor(base * usable / widest)));
 }
 
 function relationLine(segment, width, color) {
@@ -91,7 +118,16 @@ function renderAdminTree() {
     card.style.width = `${Number(c.width || 150) * state.scale}px`;
     card.style.height = `${Number(c.height || 80) * state.scale}px`;
     card.style.background = cardBackground(person);
-    card.textContent = person.displayName || person.name;
+    card.style.fontSize = `${adminCardFontSize(person, Number(c.width || 150)) * state.scale}px`;
+    const nameWrap = document.createElement('span');
+    nameWrap.className = 'admin-tree-card-name';
+    for (const lineText of adminCardNameParts(person)) {
+      const line = document.createElement('span');
+      line.className = 'admin-tree-card-name-line';
+      line.textContent = lineText;
+      nameWrap.appendChild(line);
+    }
+    card.appendChild(nameWrap);
     card.title = `${person.displayName || person.name} · ${person.ratYearLabel || '?'} · ${person.instrumentRaw || '?'}`;
     if (filter) {
       const hay = [person.name, person.displayName, person.personalNickname, person.sectionNicknames, person.ratYearLabel, person.instrumentRaw].map(lower).join(' ');
@@ -108,9 +144,21 @@ function fieldInput(field, index) {
   wrapper.className = 'form-field';
   const label = document.createElement('span'); label.textContent = field.label;
   const longField = /notes|position|memory|vet$|rat\s+\d+/i.test(field.label) || String(field.value || '').length > 100;
-  const input = longField ? document.createElement('textarea') : document.createElement('input');
-  if (longField) { input.rows = 3; wrapper.classList.add('form-field-wide'); }
-  else input.type = 'text';
+  const key = lower(field.label).replace(/[^a-z0-9]+/g, '');
+  let input;
+  if (key === 'treedisplaynamepreference' || key === 'treedisplaylastnamepreference') {
+    input = document.createElement('select');
+    const choices = key === 'treedisplaynamepreference'
+      ? [['Given/Preferred Name','First/Preferred Name'], ['Nickname','Personal Nickname'], ['Both','First/Preferred + Personal Nickname']]
+      : [['Maiden/Family Name','Family/Maiden Name'], ['Married Name','Married/Current Name'], ['Both','Both last names']];
+    for (const [value, text] of choices) {
+      const option = document.createElement('option'); option.value = value; option.textContent = text; input.appendChild(option);
+    }
+  } else if (longField) {
+    input = document.createElement('textarea'); input.rows = 3; wrapper.classList.add('form-field-wide');
+  } else {
+    input = document.createElement('input'); input.type = 'text';
+  }
   input.dataset.fieldLabel = field.label;
   input.dataset.before = String(field.value ?? '');
   input.value = field.value ?? '';
@@ -119,10 +167,18 @@ function fieldInput(field, index) {
   return wrapper;
 }
 
+function addPreferenceFields(fields, person = null) {
+  const out = fields.map((field) => ({ ...field }));
+  const keys = new Set(out.map((field) => lower(field.label).replace(/[^a-z0-9]+/g, '')));
+  if (!keys.has('treedisplaynamepreference')) out.push({ label: 'Tree Display Name Preference', value: person?.treeDisplayNamePreference || 'Given/Preferred Name' });
+  if (!keys.has('treedisplaylastnamepreference')) out.push({ label: 'Tree Display Last Name Preference', value: person?.treeDisplayLastNamePreference || 'Maiden/Family Name' });
+  return out;
+}
+
 function editorFieldsFor(person) {
-  if (person?.sourceFields?.length) return person.sourceFields;
+  if (person?.sourceFields?.length) return addPreferenceFields(person.sourceFields, person);
   const labels = state.data.people[0]?.sourceFields?.map((field) => field.label) || [];
-  return labels.map((label) => ({ label, value: '' }));
+  return addPreferenceFields(labels.map((label) => ({ label, value: '' })), person);
 }
 
 function openPersonEditor(personId) {
@@ -149,7 +205,7 @@ function openAddEditor() {
 }
 
 function editorChanges() {
-  return qa('input[data-field-label], textarea[data-field-label]', q('#admin-editor')).map((input) => ({
+  return qa('input[data-field-label], textarea[data-field-label], select[data-field-label]', q('#admin-editor')).map((input) => ({
     label: input.dataset.fieldLabel,
     before: input.dataset.before || '',
     after: input.value.trim(),
@@ -161,7 +217,7 @@ async function savePerson() {
     let payload;
     if (state.adding) {
       const fields = {};
-      for (const input of qa('input[data-field-label], textarea[data-field-label]', q('#admin-editor'))) {
+      for (const input of qa('input[data-field-label], textarea[data-field-label], select[data-field-label]', q('#admin-editor'))) {
         if (input.value.trim()) fields[input.dataset.fieldLabel] = input.value.trim();
       }
       payload = { kind: 'admin-add', fields };
@@ -192,11 +248,18 @@ function allHeaders() {
   for (const person of state.data.people) for (const field of person.sourceFields || []) {
     if (!seen.has(field.label)) { seen.add(field.label); out.push(field.label); }
   }
+  for (const label of ['Tree Display Name Preference', 'Tree Display Last Name Preference']) {
+    if (!seen.has(label)) { seen.add(label); out.push(label); }
+  }
   return out;
 }
 
 function sourceValue(person, label) {
-  return person.sourceFields?.find((field) => field.label === label)?.value ?? '';
+  const found = person.sourceFields?.find((field) => field.label === label);
+  if (found) return found.value ?? '';
+  if (label === 'Tree Display Name Preference') return person.treeDisplayNamePreference || 'Given/Preferred Name';
+  if (label === 'Tree Display Last Name Preference') return person.treeDisplayLastNamePreference || 'Maiden/Family Name';
+  return '';
 }
 
 function sheetKey(personId, label) { return `${personId}\u0000${label}`; }
