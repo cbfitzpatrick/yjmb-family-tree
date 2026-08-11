@@ -29,6 +29,7 @@ def header_key(value: object) -> str:
 # are never renamed or overwritten by the migration helper.
 V17_OPTIONAL_COLUMNS: tuple[str, ...] = (
     "Tree Display Name Preference",
+    "Tree Display Last Name Preference",
     "Section Nicknames",
     "Specific Instruments",
     "Favorite Tech Band Memory",

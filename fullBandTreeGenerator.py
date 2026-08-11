@@ -86,21 +86,34 @@ ACCESS_SECRETS_FILENAME = "access_secrets.json"
 
 # Order here is used by the legend only. A person's card follows the order in
 # that person's Instrument cell, as requested.
+# v17.5 section palette.  The browser uses the paired gradient endpoints below;
+# SECTION_COLORS remains as a representative solid for legacy/local renderers,
+# legends, and older encrypted-tree clients.  The palette intentionally avoids
+# red, neutral black/white/gray, and colors close to the Georgia Tech navy/gold
+# year-band background.
+SECTION_GRADIENTS: dict[str, tuple[str, str]] = {
+    # Woodwinds — airy aqua/cyan family.
+    "flute/piccolo": ("#D8F7F5", "#8EDFD8"),
+    "clarinet": ("#CFF1F5", "#73CFD7"),
+    "sax/saxophone": ("#C6EAF3", "#5BBCCB"),
+    # Brass — mint/lime-green family.
+    "trumpet": ("#E7F8D7", "#A6DA78"),
+    "mellophone": ("#DEF4CD", "#91CE67"),
+    "trombone": ("#D5EFC1", "#7FC259"),
+    "baritone": ("#CDE9B8", "#6CB74F"),
+    "sousaphone": ("#C3E3AE", "#58AA49"),
+    # Percussion — violet/lavender family.
+    "front ensemble": ("#EEE2FA", "#C5A0E6"),
+    "battery": ("#E2D3F5", "#A77FD4"),
+    # Visual groups — orchid/magenta-violet family (deliberately not red).
+    "guard": ("#F4DCF5", "#D99AD9"),
+    "goldrush": ("#EED5F5", "#C986D9"),
+    "golden girl": ("#E6CDF3", "#B573D2"),
+    "unknown": (UNKNOWN_COLOR, UNKNOWN_COLOR),
+}
 SECTION_COLORS: dict[str, str] = {
-    "flute/piccolo": "#f5c1ce",
-    "clarinet": "#ECD5E3",
-    "sax/saxophone": "#F3B0C3",
-    "trumpet": "#fa9078",
-    "mellophone": "#fcb17e",
-    "trombone": "#7cf7b7",
-    "baritone": "#8bf0e6",
-    "sousaphone": "#f797d2",
-    "front ensemble": "#C6DBDA",
-    "battery": "#D4F0F0",
-    "guard": "#FF968A",
-    "goldrush": "#F6EAC2",
-    "golden girl": "#FFFFB5",
-    "unknown": UNKNOWN_COLOR,
+    section: colors[1] if section != "unknown" else UNKNOWN_COLOR
+    for section, colors in SECTION_GRADIENTS.items()
 }
 
 # Patterns are intentionally ordered from more specific to less specific.
@@ -171,6 +184,7 @@ HEADER_ALIASES: dict[str, tuple[str, ...]] = {
     "year": ("ratyear", "year"),
     "instrument": ("instrument", "instruments", "section"),
     "tree_name_preference": ("treedisplaynamepreference", "treenamepreference", "cardnamepreference"),
+    "tree_last_name_preference": ("treedisplaylastnamepreference", "treelastnamepreference", "cardlastnamepreference"),
     "vet": ("vet", "vetsnameratyearandinstruments"),
 }
 
@@ -239,16 +253,16 @@ def load_font(size: int, *, bold: bool = False) -> ImageFont.ImageFont:
     if bold:
         candidates.extend(
             (
-                Path("C:/Windows/Fonts/calibrib.ttf"),
                 Path("C:/Windows/Fonts/arialbd.ttf"),
+                Path("C:/Windows/Fonts/calibrib.ttf"),
                 Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
             )
         )
     else:
         candidates.extend(
             (
-                Path("C:/Windows/Fonts/calibri.ttf"),
                 Path("C:/Windows/Fonts/arial.ttf"),
+                Path("C:/Windows/Fonts/calibri.ttf"),
                 Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
             )
         )
@@ -805,6 +819,7 @@ class Person:
     family: str
     married: str
     tree_name_preference: str
+    tree_last_name_preference: str
     year_raw: object
     year: int | None
     instrument_raw: str
@@ -844,8 +859,41 @@ class Person:
         return self.given or self.nickname
 
     @property
+    def married_surname(self) -> str:
+        """Return the surname portion of Married Name without mutating source data."""
+        married = normalize_spaces(self.married)
+        if not married:
+            return ""
+        words = married.split()
+        if len(words) <= 1:
+            return married
+        # Some historical cells contain a complete current name instead of just
+        # a surname. Remove the known given/nickname prefix only for display.
+        married_key = loose_name_key(married)
+        for prefix in (self.given, self.nickname):
+            prefix = normalize_spaces(prefix)
+            if prefix and married_key.startswith(loose_name_key(prefix)):
+                remainder = normalize_spaces(married[len(prefix):])
+                if remainder:
+                    return remainder
+        return married
+
+    @property
+    def card_family_name(self) -> str:
+        preference = normalized_header(self.tree_last_name_preference)
+        maiden = normalize_spaces(self.family)
+        married = normalize_spaces(self.married_surname)
+        if preference in {"married", "marriedname", "current", "currentname"} and married:
+            return married
+        if preference in {"both", "maidenandmarried", "familyandmarried", "bothlastnames"} and married:
+            if loose_name_key(maiden) == loose_name_key(married):
+                return maiden or married
+            return " / ".join(value for value in (maiden, married) if value)
+        return maiden or married
+
+    @property
     def card_display_name(self) -> str:
-        return normalize_spaces(f"{self.card_given_name} {self.family}") or self.stable_name
+        return normalize_spaces(f"{self.card_given_name} {self.card_family_name}") or self.stable_name
 
     @property
     def currently_rat(self) -> bool:
@@ -1195,6 +1243,11 @@ def load_people(
             if "tree_name_preference" in mapping
             else "Given/Preferred Name"
         )
+        tree_last_name_preference = (
+            normalize_spaces(ws.cell(row, mapping["tree_last_name_preference"]).value)
+            if "tree_last_name_preference" in mapping
+            else "Maiden/Family Name"
+        )
         if not any((given, nickname, family, married)):
             continue
         stable_name = normalize_spaces(f"{given} {family}") or given or family
@@ -1248,6 +1301,7 @@ def load_people(
             family=family,
             married=married,
             tree_name_preference=tree_name_preference,
+            tree_last_name_preference=tree_last_name_preference,
             year_raw=year_raw,
             year=year,
             instrument_raw=instrument_raw,
@@ -1898,7 +1952,7 @@ def fit_card_font(
 
 def name_lines(person: Person) -> list[str]:
     given = person.card_given_name or person.stable_name
-    family = person.family
+    family = person.card_family_name
     if family:
         return [given, family]
     words = person.stable_name.split()
@@ -2016,20 +2070,8 @@ def draw_leadership_icons(card: Image.Image, person: Person) -> None:
             drawer(draw, _icon_box(card, kind))
 
 
-RAT_CAP_ICON_PATH = SCRIPT_DIR / "web_template" / "rat-cap-icon.png"
-_RAT_CAP_ICON_CACHE: Image.Image | None = None
-
-
-def _rat_cap_icon(size: tuple[int, int] = (28, 18)) -> Image.Image | None:
-    global _RAT_CAP_ICON_CACHE
-    if _RAT_CAP_ICON_CACHE is None:
-        if not RAT_CAP_ICON_PATH.exists():
-            return None
-        _RAT_CAP_ICON_CACHE = Image.open(RAT_CAP_ICON_PATH).convert("RGBA")
-    icon = _RAT_CAP_ICON_CACHE.copy()
-    icon.thumbnail(size, Image.Resampling.LANCZOS)
-    return icon
-
+# v17.5: the supplied cap artwork belongs to the RAT Parent role.
+# Card icons remain disabled, so no current-RAT icon asset is loaded here.
 
 def _draw_band_club_icon(draw: ImageDraw.ImageDraw, card: Image.Image) -> None:
     """Minimal Band Club badge: a music note inside an organization ring."""
@@ -2045,19 +2087,19 @@ def _draw_band_club_icon(draw: ImageDraw.ImageDraw, card: Image.Image) -> None:
     draw.ellipse((x0 + 5, y0 + 10, x0 + 10, y0 + 14), fill="black")
 
 
-def draw_card_status_icons(card: Image.Image, person: Person) -> None:
-    """Draw only the v17 non-leadership status badges.
+CARD_ICONS_ENABLED = False
 
-    Existing section/formal/informal leadership corner icons are intentionally
-    disabled. The RAT cap supplied by the project owner marks a current RAT,
-    and Band Club leadership uses a separate music-club badge.
+
+def draw_card_status_icons(card: Image.Image, person: Person) -> None:
+    """Card icon display is intentionally disabled in v17.5.
+
+    Role flags and the prepared image assets remain in the protected site bundle
+    so the requested icon system can be enabled later without changing workbook
+    data.  In particular, the supplied cap is RAT Parent/RAT Mom/RAT Dad artwork;
+    it is no longer used as a generic/current-RAT badge.
     """
-    if person.currently_rat:
-        icon = _rat_cap_icon()
-        if icon is not None:
-            card.alpha_composite(icon, (card.width - icon.width - 5, 4))
-    if person.band_club_leadership:
-        _draw_band_club_icon(ImageDraw.Draw(card), card)
+    if not CARD_ICONS_ENABLED:
+        return
 
 def create_card_geometry(person: Person, size: tuple[int, int]) -> CardObject:
     """Create only card geometry/section metadata for browser-only builds.
@@ -2089,15 +2131,27 @@ def create_person_card(
     min_x, min_y, max_x, max_y = fill_bounds
     categories = person.instruments or ["unknown"]
     colors = [SECTION_COLORS.get(category, UNKNOWN_COLOR) for category in categories]
-    rgb_colors = [tuple(int(color[index : index + 2], 16) for index in (1, 3, 5)) for color in colors]
+    gradients = [SECTION_GRADIENTS.get(category, (UNKNOWN_COLOR, UNKNOWN_COLOR)) for category in categories]
+    rgb_gradients = [
+        (
+            tuple(int(start[index : index + 2], 16) for index in (1, 3, 5)),
+            tuple(int(end[index : index + 2], 16) for index in (1, 3, 5)),
+        )
+        for start, end in gradients
+    ]
     interior_width = max_x - min_x + 1
 
     for y in range(min_y, max_y + 1):
         for x in range(min_x, max_x + 1):
             if not mask_pixels[x, y]:
                 continue
-            segment = min(len(rgb_colors) - 1, ((x - min_x) * len(rgb_colors)) // interior_width)
-            red, green, blue = rgb_colors[segment]
+            relative = x - min_x
+            segment = min(len(rgb_gradients) - 1, (relative * len(rgb_gradients)) // interior_width)
+            seg_start = interior_width * segment / len(rgb_gradients)
+            seg_end = interior_width * (segment + 1) / len(rgb_gradients)
+            fraction = 0.0 if seg_end <= seg_start else max(0.0, min(1.0, (relative - seg_start) / (seg_end - seg_start)))
+            start_rgb, end_rgb = rgb_gradients[segment]
+            red, green, blue = tuple(round(a + (b - a) * fraction) for a, b in zip(start_rgb, end_rgb))
             pixels[x, y] = (red, green, blue, pixels[x, y][3])
 
     if len(categories) > 1:
@@ -2669,6 +2723,9 @@ def scene_to_web_data(
                 "givenPreferredName": person.given,
                 "nickname": person.nickname,
                 "treeDisplayNamePreference": person.tree_name_preference or "Given/Preferred Name",
+                "treeDisplayLastNamePreference": person.tree_last_name_preference or "Maiden/Family Name",
+                "cardGivenName": person.card_given_name,
+                "cardFamilyName": person.card_family_name,
                 "familyMaidenName": person.family,
                 "marriedName": person.married,
                 "personalNickname": person.nickname,
@@ -2719,7 +2776,7 @@ def scene_to_web_data(
         )
 
     return {
-        "schemaVersion": 8,
+        "schemaVersion": 9,
         "sceneId": scene.scene_id,
         "title": scene.title,
         "width": scene.width,
@@ -2731,6 +2788,8 @@ def scene_to_web_data(
         "connectorOutlineColor": None,
         "connectorOutlineWidth": 0,
         "sectionColors": SECTION_COLORS,
+        "sectionGradients": {section: list(colors) for section, colors in SECTION_GRADIENTS.items()},
+        "cardIconsEnabled": CARD_ICONS_ENABLED,
         "yearBands": [
             {"label": label, "y": y, "color": color, "textColor": text_color}
             for label, y, color, text_color in year_band_labels(scene)
@@ -2829,7 +2888,9 @@ def export_github_pages_site(
         "add-yourself.js",
         "admin.js",
         "admin-mail.js",
-        "rat-cap-icon.png",
+        "rat-parent-icon.png",
+        "section-leader-icon.png",
+        "band-club-icon.png",
         "site_config.json",
     )
     missing_templates = [template_dir / name for name in template_names if not (template_dir / name).exists()]

@@ -274,19 +274,30 @@ def truthy(value: object) -> bool:
 
 
 def leadership_icon_flags(formal_text: object, informal_text: object, informal_flag: object = "") -> list[str]:
+    """Return future card-icon categories for the person's leadership roles.
+
+    Card icons are deliberately disabled in the v17.5 browser renderer, but the
+    role-specific flags remain in protected structured data so the prepared icon
+    assets can be enabled later without another workbook migration.
+    """
     formal = canonical_formal_roles(formal_text)
     flags: list[str] = []
-    if "Section Leader" in formal:
-        flags.append("section-leader")
-    if "Guard Captain" in formal:
-        flags.append("guard-captain")
-    if "Drum Major" in formal:
-        flags.append("drum-major")
-    if "RAT Parent" in formal:
-        flags.append("rat-parent")
+    explicit = (
+        ("Section Leader", "section-leader"),
+        ("Guard Captain", "guard-captain"),
+        ("Drum Major", "drum-major"),
+        ("RAT Parent", "rat-parent"),
+        ("MCM", "mcm"),
+        ("Libraries", "libraries"),
+        ("Uniforms", "uniforms"),
+    )
+    for role, flag in explicit:
+        if role in formal:
+            flags.append(flag)
     if informal_roles_from_text(informal_text) or truthy(informal_flag):
         flags.append("informal-leadership")
-    if any(role not in {"Section Leader", "Guard Captain", "Drum Major", "RAT Parent"} for role in formal):
+    explicit_roles = {role for role, _ in explicit}
+    if any(role not in explicit_roles for role in formal):
         flags.append("other-leadership")
     return flags
 

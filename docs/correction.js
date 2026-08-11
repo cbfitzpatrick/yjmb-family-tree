@@ -21,7 +21,7 @@ function renderFields() {
   container.replaceChildren();
   originalValues.clear();
   const fields = Array.isArray(person.sourceFields) && person.sourceFields.length
-    ? person.sourceFields
+    ? person.sourceFields.map((field) => ({ ...field }))
     : [
         { label: 'Given/Preferred Name', value: person.givenPreferredName || '' },
         { label: 'Nickname', value: person.personalNickname || person.nickname || '' },
@@ -31,6 +31,13 @@ function renderFields() {
         { label: 'Instrument', value: person.instrumentRaw || '' },
         { label: 'Favorite Tech Band Memory', value: person.favoriteTechBandMemory || '' },
       ];
+  const keys = new Set(fields.map((field) => String(field.label || '').toLowerCase().replace(/[^a-z0-9]+/g, '')));
+  if (!keys.has('treedisplaynamepreference')) {
+    fields.push({ label: 'Tree Display Name Preference', value: person.treeDisplayNamePreference || 'Given/Preferred Name' });
+  }
+  if (!keys.has('treedisplaylastnamepreference')) {
+    fields.push({ label: 'Tree Display Last Name Preference', value: person.treeDisplayLastNamePreference || 'Maiden/Family Name' });
+  }
 
   fields.forEach((field, index) => {
     const id = fieldId(field.label, index);
@@ -47,6 +54,15 @@ function renderFields() {
         ['Given/Preferred Name', 'First/Preferred Name'],
         ['Nickname', 'Personal Nickname'],
         ['Both', 'First/Preferred + Personal Nickname'],
+      ]) {
+        const option = document.createElement('option'); option.value = value; option.textContent = text; input.appendChild(option);
+      }
+    } else if (key === 'treedisplaylastnamepreference') {
+      input = document.createElement('select');
+      for (const [value, text] of [
+        ['Maiden/Family Name', 'Family/Maiden Name'],
+        ['Married Name', 'Married/Current Name'],
+        ['Both', 'Both last names'],
       ]) {
         const option = document.createElement('option'); option.value = value; option.textContent = text; input.appendChild(option);
       }

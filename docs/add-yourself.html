@@ -7,8 +7,8 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body class="questionnaire-page">
+  <nav class="data-entry-nav"><a class="back-link" href="tree.html">← Back to family tree</a></nav>
   <header class="questionnaire-header">
-    <a class="back-link" href="tree.html">← Back to family tree</a>
     <div>
       <p class="details-kicker">YJMB family tree</p>
       <h1>Add yourself to the tree</h1>
@@ -51,6 +51,12 @@
           <div id="married-name-guidance" class="form-guidance" hidden>
             Update the name fields above so <strong>Family/Maiden Name</strong> is the family name you used in band and <strong>Last/Married Name</strong> is your current married surname.
           </div>
+          <fieldset id="last-name-preference-details" class="choice-group compact-choice-group" hidden>
+            <legend>Which last name should be shown on your tree card?</legend>
+            <label><input type="radio" name="tree-last-name-preference" value="maiden"> Family/Maiden Name</label>
+            <label><input type="radio" name="tree-last-name-preference" value="married"> Married/Current Name</label>
+            <label><input type="radio" name="tree-last-name-preference" value="both"> Both last names</label>
+          </fieldset>
 
           <fieldset class="choice-group">
             <legend>Do you have a personal nickname?</legend>

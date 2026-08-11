@@ -41,7 +41,7 @@ try {
         "tree.html", "correction.html", "add-yourself.html", "admin.html",
         "styles.css", "gate.css", "gate.js", "secure-data.js",
         "developer-export.js", "app.js", "correction.js", "add-yourself.js",
-        "admin.js", "admin-mail.js", "rat-cap-icon.png", "site_config.json"
+        "admin.js", "admin-mail.js", "rat-parent-icon.png", "section-leader-icon.png", "band-club-icon.png", "site_config.json"
     )
     foreach ($Name in $UiFiles) {
         $Source = Join-Path $Template $Name

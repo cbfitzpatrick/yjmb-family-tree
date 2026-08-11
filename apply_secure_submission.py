@@ -110,6 +110,7 @@ def discover(ws):
         "instrument": ["instrument", "section"],
         "vet": ["vet"],
         "display": ["treedisplaynamepreference"],
+        "lastDisplay": ["treedisplaylastnamepreference"],
         "sectionNick": ["sectionnicknames"],
         "specific": ["specificinstruments"],
         "memory": ["favoritetechbandmemory"],
@@ -238,6 +239,117 @@ def display_preference(value: object) -> str:
     return "Given/Preferred Name"
 
 
+def last_name_display_preference(value: object) -> str:
+    key = h(value)
+    if key in {"married", "marriedname", "current", "currentname"}:
+        return "Married Name"
+    if key in {"both", "maidenandmarried", "familyandmarried", "bothlastnames"}:
+        return "Both"
+    return "Maiden/Family Name"
+
+
+RELATION_EDIT_RE = re.compile(r"^\s*(.*?)\s*\(((?:19|20)\d{2})\)\s*\(([^()]*)\)\s*$")
+
+
+def parse_relation_edit(value: object) -> tuple[str, int, str] | None:
+    raw = norm(value)
+    if not raw:
+        return None
+    match = RELATION_EDIT_RE.fullmatch(raw)
+    if not match:
+        return None
+    name = norm(match.group(1))
+    year = int(match.group(2))
+    section = norm(match.group(3))
+    if not name or not section:
+        return None
+    return name, year, section
+
+
+def split_person_name(value: object) -> tuple[str, str]:
+    """Conservatively split an externally referenced person's full name."""
+    parts = norm(value).split()
+    if len(parts) < 2:
+        raise ReviewRequired(
+            "A new RAT reference needs at least a first/preferred name and family name "
+            "before a person row can be created automatically."
+        )
+    prefixes = {"de", "del", "van", "von", "la", "le", "st.", "st", "saint"}
+    if len(parts) >= 3 and parts[-2].casefold() in prefixes:
+        return " ".join(parts[:-2]), " ".join(parts[-2:])
+    return " ".join(parts[:-1]), parts[-1]
+
+
+def rows_matching_person(ws, header_row: int, mapping: dict[str, int], name: str, year: int) -> list[int]:
+    target = namekey(name)
+    return [
+        row
+        for row in range(header_row + 1, ws.max_row + 1)
+        if namekey(row_name(ws, row, mapping)) == target and row_year(ws, row, mapping) == year
+    ]
+
+
+def create_missing_rat_from_correction(
+    ws, header_row, source_row, mapping, labels, label_to_col, change_payload, changes
+) -> list[int]:
+    """Create and reciprocate RAT rows referenced for the first time online.
+
+    This is deliberately limited to RAT fields on the regular "Is something
+    incorrect?" correction flow. Existing people are never duplicated: a
+    same-name/same-RAT-year workbook row counts as an existing directory entry.
+    """
+    created: list[int] = []
+    if not isinstance(change_payload, list):
+        return created
+    for item in change_payload:
+        if not isinstance(item, dict):
+            continue
+        label = norm(item.get("label"))
+        match = re.fullmatch(r"RAT\s+(\d+)", label, re.I)
+        if not match:
+            continue
+        after = norm(item.get("after"))
+        if not after:
+            continue
+        parsed = parse_relation_edit(after)
+        if not parsed:
+            raise ReviewRequired(
+                f"{label} must use Name (RAT Year) (Section) so a missing RAT can be created safely."
+            )
+        name, year, section = parsed
+        matches = rows_matching_person(ws, header_row, mapping, name, year)
+        if matches:
+            # The referenced person already exists. Existing-profile reciprocity
+            # remains visible to Admin Mode for explicit validation.
+            continue
+
+        given, family = split_person_name(name)
+        new_row = append_style_row(ws, header_row)
+        set_mapped(ws, new_row, mapping, labels, "given", given, changes)
+        set_mapped(ws, new_row, mapping, labels, "family", family, changes)
+        set_mapped(ws, new_row, mapping, labels, "year", year, changes)
+        instrument = canonical_section_entry(section) or relation_section(section)
+        set_mapped(ws, new_row, mapping, labels, "instrument", instrument, changes)
+        set_mapped(ws, new_row, mapping, labels, "display", "Given/Preferred Name", changes)
+        set_mapped(ws, new_row, mapping, labels, "lastDisplay", "Maiden/Family Name", changes)
+        set_mapped(ws, new_row, mapping, labels, "hasNick", "No", changes)
+        set_mapped(ws, new_row, mapping, labels, "changed", "No", changes)
+        set_mapped(ws, new_row, mapping, labels, "pair", "Yes", changes)
+        # The user explicitly added this new person as their RAT, so unlike a
+        # claim involving an already-existing row, the new row can be safely
+        # reciprocated at creation time without overwriting prior profile data.
+        change_cell(
+            ws,
+            new_row,
+            mapping["vet"],
+            person_relation(ws, source_row, mapping),
+            labels[mapping["vet"]],
+            changes,
+        )
+        created.append(new_row)
+    return created
+
+
 def leadership_values(self_data: dict[str, Any]) -> tuple[list[str], str, str, str, str, str]:
     history = self_data.get("leadershipHistory") or []
     if not isinstance(history, list):
@@ -327,6 +439,7 @@ def apply_addition(ws, header_row, mapping, rat_cols, labels, label_to_col, payl
     set_mapped(ws, row, mapping, labels, "year", year, changes)
     set_mapped(ws, row, mapping, labels, "instrument", instrument, changes)
     set_mapped(ws, row, mapping, labels, "display", display_preference(self_data.get("treeNamePreference")), changes)
+    set_mapped(ws, row, mapping, labels, "lastDisplay", last_name_display_preference(self_data.get("lastNamePreference")), changes)
     set_mapped(
         ws, row, mapping, labels, "sectionNick",
         "; ".join(f"{relation_section(item.get('section'))}: {norm(item.get('sectionNickname'))}" for item in sections if isinstance(item, dict) and norm(item.get("sectionNickname"))) or None,
@@ -419,15 +532,20 @@ def apply_field_changes(ws, row, changes_payload, labels, label_to_col, changes,
         change_cell(ws, row, col, item.get("after"), labels[col], changes)
 
 
-def apply_correction(ws, header_row, labels, label_to_col, payload, changes):
+def apply_correction(ws, header_row, mapping, labels, label_to_col, payload, changes):
     row = row_for_id(ws, header_row, payload.get("personId"))
     # Member corrections intentionally apply against the authoritative workbook
     # even when the browser's encrypted-tree snapshot is older. change_cell()
     # records the workbook's *actual* current value in the encrypted changelog,
     # so the edit remains safely revertible without turning harmless snapshot
     # drift into an administrator-review loop. Structural validation still runs.
-    apply_field_changes(ws, row, payload.get("changes"), labels, label_to_col, changes, stale_check=False)
-    return row, f"Updated {norm(payload.get('personId'))}"
+    change_payload = payload.get("changes")
+    apply_field_changes(ws, row, change_payload, labels, label_to_col, changes, stale_check=False)
+    created = create_missing_rat_from_correction(
+        ws, header_row, row, mapping, labels, label_to_col, change_payload, changes
+    )
+    suffix = f" and created/reciprocated {len(created)} new RAT row(s)" if created else ""
+    return row, f"Updated {norm(payload.get('personId'))}{suffix}"
 
 
 def apply_admin_patch(ws, header_row, labels, label_to_col, payload, changes):
@@ -565,7 +683,7 @@ def apply(workbook: Path, submission_file: Path, *, changelog_dir: Path = Path("
         if kind in {"addition", "add", "member-add"}:
             row, summary = apply_addition(ws, header_row, mapping, rat_cols, labels, label_to_col, payload, changes)
         elif kind == "correction":
-            row, summary = apply_correction(ws, header_row, labels, label_to_col, payload, changes)
+            row, summary = apply_correction(ws, header_row, mapping, labels, label_to_col, payload, changes)
         elif kind == "admin-patch":
             row, summary = apply_admin_patch(ws, header_row, labels, label_to_col, payload, changes)
         elif kind == "admin-add":

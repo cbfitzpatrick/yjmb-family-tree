@@ -511,10 +511,14 @@ function changedLastNameUpdated() {
   const yes = changed === 'yes';
   q('#self-married-wrap').hidden = !yes;
   q('#married-name-guidance').hidden = !yes;
+  q('#last-name-preference-details').hidden = !yes;
   q('#self-family-label').textContent = yes ? 'Family/Maiden Name' : 'Family/Last Name';
   q('#self-family').placeholder = yes ? 'Family/Maiden Name' : 'Family/Last Name';
   q('#self-married').required = yes;
-  if (!yes) q('#self-married').value = '';
+  if (!yes) {
+    q('#self-married').value = '';
+    for (const input of qa('input[name="tree-last-name-preference"]')) input.checked = false;
+  }
   updateExistingSelfWarning();
 }
 
@@ -864,6 +868,10 @@ function validateStep1() {
     showStatus('Enter your current Last/Married Name, or choose “No” if your surname has not changed.');
     return false;
   }
+  if (changed === 'yes' && !radioValue('tree-last-name-preference')) {
+    showStatus('Choose whether your tree card should show your Family/Maiden Name, Married/Current Name, or both.');
+    return false;
+  }
   const hasNickname = radioValue('has-nickname');
   if (!hasNickname) {
     showStatus('Please answer whether you have a nickname.');
@@ -1037,6 +1045,7 @@ function proposedSubmission() {
       familyMaidenName: q('#self-family').value.trim(),
       marriedName: radioValue('changed-last-name') === 'yes' ? q('#self-married').value.trim() : '',
       changedLastName: radioValue('changed-last-name') === 'yes',
+      lastNamePreference: radioValue('changed-last-name') === 'yes' ? (radioValue('tree-last-name-preference') || 'maiden') : 'maiden',
       ratYear: Number(q('#self-rat-year').value),
       section: primarySection(),
       multipleSections: radioValue('multiple-sections') === 'yes',
@@ -1288,13 +1297,21 @@ function previewBandStyle(year, layout) {
 
 function sectionGradient(sections) {
   const list = (sections || []).length ? sections : ['unknown'];
-  const colors = list.map((section) => state.data.sectionColors?.[section] || '#D3D3D3');
-  if (colors.length === 1) return colors[0];
+  const pairs = list.map((section) => {
+    const pair = state.data.sectionGradients?.[section];
+    if (Array.isArray(pair) && pair.length >= 2) return [pair[0], pair[1]];
+    const fallback = state.data.sectionColors?.[section] || '#D3D3D3';
+    return [fallback, fallback];
+  });
+  if (pairs.length === 1) {
+    const [start, end] = pairs[0];
+    return start === end ? start : `linear-gradient(135deg, ${start} 0%, ${end} 100%)`;
+  }
   const stops = [];
-  colors.forEach((color, index) => {
-    const start = (index / colors.length) * 100;
-    const end = ((index + 1) / colors.length) * 100;
-    stops.push(`${color} ${start}%`, `${color} ${end}%`);
+  pairs.forEach(([startColor, endColor], index) => {
+    const start = (index / pairs.length) * 100;
+    const end = ((index + 1) / pairs.length) * 100;
+    stops.push(`${startColor} ${start}%`, `${endColor} ${end}%`);
   });
   return `linear-gradient(90deg, ${stops.join(', ')})`;
 }
@@ -1376,19 +1393,9 @@ function renderPreview() {
     const name = document.createElement('span');
     name.textContent = node.sourcePerson?.displayName || node.name;
     card.appendChild(name);
-    if (node.currentlyRat) {
-      const icon = document.createElement('img');
-      icon.src = 'rat-cap-icon.png';
-      icon.alt = '';
-      icon.className = 'card-status-icon rat-cap-icon';
-      card.appendChild(icon);
-    }
-    if (node.bandClubLeadership) {
-      const icon = document.createElement('span');
-      icon.className = 'card-status-icon band-club-icon';
-      icon.innerHTML = '<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8.1" fill="rgba(255,255,255,.88)" stroke="currentColor" stroke-width="1.4"/><path d="M11.4 5.1v7.1c-.8-.5-2.2-.4-3 .2-.9.7-1 1.8-.2 2.4.8.7 2.2.5 3.1-.2.6-.5.8-1.1.7-1.7V8.1l4-1V5.4Z" fill="currentColor"/></svg>';
-      card.appendChild(icon);
-    }
+    // Card status/leadership icons are intentionally disabled for now.
+    // The main tree bundle still carries the future role flags/assets so they
+    // can be enabled later without changing workbook data.
     stage.appendChild(card);
   }
 
@@ -1442,6 +1449,7 @@ function renderSubmissionSummary() {
     summaryRow('Nickname', data.self.nickname),
     summaryRow('Tree card name', treeCardName()),
     summaryRow('Married Name', data.self.marriedName),
+    summaryRow('Card last name', data.self.changedLastName ? data.self.lastNamePreference : 'Family/Last Name'),
     summaryRow('RAT Year', data.self.ratYear),
     summaryRow('Sections', data.self.sections.map((entry) => {
       const details = [];

@@ -33,6 +33,7 @@ const status = q('#status');
 
 const SPECIAL_SECTION_BLUE = '#d5defe';
 const PACKED_TREE_GAP = 28;
+const TREE_VIEW_STORAGE_KEY = 'yjmbTreeViewV17_5';
 
 function normalizeSearch(value) {
   return String(value ?? '').normalize('NFKD').toLowerCase().replace(/\s+/g, ' ').trim();
@@ -171,15 +172,28 @@ function renderConnectors(data) {
   }
 }
 
+function gradientPairForSection(section) {
+  const pair = state.data?.sectionGradients?.[section];
+  if (Array.isArray(pair) && pair.length >= 2) return [pair[0], pair[1]];
+  const fallback = state.data?.sectionColors?.[section] || '#D3D3D3';
+  return [fallback, fallback];
+}
+
 function regularCardBackground(person) {
-  const colors = person.card?.sectionColors?.length ? person.card.sectionColors : ['#D3D3D3'];
-  if (colors.length === 1) return colors[0];
-  const stop = 100 / colors.length;
-  const parts = [];
-  colors.forEach((color, index) => {
-    parts.push(`${color} ${index * stop}%`, `${color} ${(index + 1) * stop}%`);
+  const sections = (person.instruments || []).filter(Boolean);
+  if (!sections.length) return '#D3D3D3';
+  if (sections.length === 1) {
+    const [start, end] = gradientPairForSection(sections[0]);
+    return start === end ? start : `linear-gradient(135deg, ${start} 0%, ${end} 100%)`;
+  }
+  const stops = [];
+  sections.forEach((section, index) => {
+    const [start, end] = gradientPairForSection(section);
+    const left = 100 * index / sections.length;
+    const right = 100 * (index + 1) / sections.length;
+    stops.push(`${start} ${left}%`, `${end} ${right}%`);
   });
-  return `linear-gradient(90deg, ${parts.join(', ')})`;
+  return `linear-gradient(90deg, ${stops.join(', ')})`;
 }
 
 function sectionViewCardBackground(person) {
@@ -194,8 +208,58 @@ function sectionViewCardBackground(person) {
     : '#FFFFFF';
 }
 
-function bandClubIconSvg() {
-  return '<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8.1" fill="rgba(255,255,255,.88)" stroke="currentColor" stroke-width="1.4"/><path d="M11.4 5.1v7.1c-.8-.5-2.2-.4-3 .2-.9.7-1 1.8-.2 2.4.8.7 2.2.5 3.1-.2.6-.5.8-1.1.7-1.7V8.1l4-1V5.4Z" fill="currentColor"/></svg>';
+function inlineRoleIconSvg(kind) {
+  const icons = {
+    'drum-major': '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5c1.7-.8 3.2.2 3.6 1.7l.6 2.3.8-4.6c.2-1.2 2-1 1.9.3l-.4 5.2.9-4.3c.3-1.2 2.1-.8 1.8.4l-.9 4.3.9-3.3c.3-1.1 2-.6 1.7.5l-1.1 4.2c-.6 2.4-2 4-4 4.7l-2.8 1-2.3-6.1L4 5.5Zm16 0c-1.7-.8-3.2.2-3.6 1.7l-.6 2.3-.8-4.6c-.2-1.2-2-1-1.9.3l.4 5.2-.9-4.3c-.3-1.2-2.1-.8-1.8.4l.9 4.3-.9-3.3c-.3-1.1-2-.6-1.7.5l1.1 4.2c.6 2.4 2 4 4 4.7l2.8 1 2.3-6.1L20 5.5Z" fill="currentColor"/></svg>',
+    'mcm': '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h4l1.3-2h5.4L16 7h4v12H4Z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="13" r="4" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
+    'libraries': '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5.5c3.2-.8 6-.2 9 1.8v12c-3-2-5.8-2.6-9-1.8Zm18 0c-3.2-.8-6-.2-9 1.8v12c3-2 5.8-2.6 9-1.8Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
+    'uniforms': '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 4 4 2 4-2 4 4-3 3v9H7v-9L4 8Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M12 6v14M9.5 10h5" stroke="currentColor" stroke-width="1.4"/></svg>',
+    'guard-captain': '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3v18M8 4l10 3-10 4Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>',
+    'informal-leadership': '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10h4l8-4v12l-8-4H4Zm4 4 2 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>',
+    'other-leadership': '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9Z" fill="none" stroke="currentColor" stroke-width="1.7"/></svg>',
+  };
+  return icons[kind] || '';
+}
+
+function cardIconElement(kind) {
+  const wrapper = document.createElement('span');
+  wrapper.className = `card-status-icon card-role-icon icon-${kind}`;
+  wrapper.dataset.iconKind = kind;
+  wrapper.title = kind.replaceAll('-', ' ');
+  const imageAssets = {
+    'section-leader': 'section-leader-icon.png',
+    'rat-parent': 'rat-parent-icon.png',
+    'band-club': 'band-club-icon.png',
+  };
+  if (imageAssets[kind]) {
+    const img = document.createElement('img');
+    img.src = imageAssets[kind];
+    img.alt = '';
+    wrapper.appendChild(img);
+  } else {
+    wrapper.innerHTML = inlineRoleIconSvg(kind);
+  }
+  return wrapper;
+}
+
+function cardNameParts(person) {
+  const family = String(person.cardFamilyName || person.familyMaidenName || '').trim();
+  const given = String(person.cardGivenName || '').trim();
+  if (given || family) return { given: given || person.givenPreferredName || person.displayName || person.name, family };
+  const display = String(person.displayName || person.name || '').trim();
+  const words = display.split(/\s+/);
+  return words.length > 1 ? { given: words.slice(0, -1).join(' '), family: words.at(-1) } : { given: display, family: '' };
+}
+
+function cardNameFontSize(parts, cardWidth) {
+  const canvas = cardNameFontSize.canvas || (cardNameFontSize.canvas = document.createElement('canvas'));
+  const context = canvas.getContext('2d');
+  const base = 22;
+  if (!context) return base;
+  context.font = `${base}px Arial, Helvetica, sans-serif`;
+  const maxMeasured = Math.max(context.measureText(parts.given || '').width, context.measureText(parts.family || '').width, 1);
+  const usable = Math.max(70, Number(cardWidth || 150) - 44);
+  return Math.max(13, Math.min(base, Math.floor(base * usable / maxMeasured)));
 }
 
 function renderCards(data) {
@@ -231,23 +295,27 @@ function renderCards(data) {
 
     const name = document.createElement('span');
     name.className = 'site-card-name';
-    name.textContent = person.displayName || person.name;
+    const parts = cardNameParts(person);
+    const firstLine = document.createElement('span');
+    firstLine.className = 'site-card-name-line site-card-given';
+    firstLine.textContent = parts.given;
+    name.appendChild(firstLine);
+    if (parts.family) {
+      const secondLine = document.createElement('span');
+      secondLine.className = 'site-card-name-line site-card-family';
+      secondLine.textContent = parts.family;
+      name.appendChild(secondLine);
+    }
+    name.style.fontSize = `${cardNameFontSize(parts, card.width)}px`;
     builtCard.appendChild(name);
 
-    if (person.currentlyRat) {
-      const icon = document.createElement('img');
-      icon.className = 'card-status-icon rat-cap-icon';
-      icon.src = 'rat-cap-icon.png';
-      icon.alt = '';
-      icon.title = 'Current RAT';
-      builtCard.appendChild(icon);
-    }
-    if (person.bandClubLeadership) {
-      const icon = document.createElement('span');
-      icon.className = 'card-status-icon band-club-icon';
-      icon.title = 'Band Club leadership';
-      icon.innerHTML = bandClubIconSvg();
-      builtCard.appendChild(icon);
+    // All card icons remain disabled for now. The role-specific icon assets and
+    // SVG definitions are prepared so they can be enabled later without another
+    // data migration. RAT Parent uses the supplied cap artwork; current RAT is
+    // deliberately not represented by that icon.
+    if (data.cardIconsEnabled) {
+      for (const kind of person.leadershipIcons || []) builtCard.appendChild(cardIconElement(kind));
+      if (person.bandClubLeadership) builtCard.appendChild(cardIconElement('band-club'));
     }
 
     button.appendChild(builtCard);
@@ -394,7 +462,10 @@ function renderSectionFilter() {
     });
     const swatch = document.createElement('span');
     swatch.className = 'section-swatch';
-    swatch.style.background = color;
+    const pair = state.data.sectionGradients?.[section];
+    swatch.style.background = Array.isArray(pair) && pair.length >= 2
+      ? `linear-gradient(135deg, ${pair[0]}, ${pair[1]})`
+      : color;
     const text = document.createElement('span');
     text.textContent = section;
     label.append(checkbox, swatch, text);
@@ -458,6 +529,15 @@ function matchingPeople(term) {
   });
 }
 
+function clearSearchAfterSelection() {
+  const input = q('#search');
+  const results = q('#search-results');
+  input.value = '';
+  results.hidden = true;
+  results.replaceChildren();
+  applySearchHighlight();
+}
+
 function updateSearchResults() {
   const input = q('#search');
   const results = q('#search-results');
@@ -494,7 +574,7 @@ function updateSearchResults() {
     personButton.append(name, meta);
     personButton.addEventListener('click', () => {
       selectPerson(person.id, { locate: true });
-      results.hidden = true;
+      clearSearchAfterSelection();
     });
     const treeButton = document.createElement('button');
     treeButton.type = 'button';
@@ -503,7 +583,7 @@ function updateSearchResults() {
     treeButton.addEventListener('click', () => {
       focusTreeForPerson(person.id);
       selectPerson(person.id, { locate: true });
-      results.hidden = true;
+      clearSearchAfterSelection();
     });
     row.append(personButton, treeButton);
     results.appendChild(row);
@@ -733,6 +813,66 @@ function locatePerson(personId, { ensureVisible = false } = {}) {
   });
 }
 
+function saveTreeView() {
+  if (!state.data || viewport.hidden) return;
+  try {
+    localStorage.setItem(TREE_VIEW_STORAGE_KEY, JSON.stringify({
+      schemaVersion: state.data.schemaVersion || null,
+      scale: state.scale,
+      scrollLeft: viewport.scrollLeft,
+      scrollTop: viewport.scrollTop,
+      selectedPersonId: state.selectedPersonId,
+      focusedRootId: state.focusedRootId,
+      appliedSections: [...state.appliedSections],
+      savedAt: Date.now(),
+    }));
+  } catch { /* local persistence is optional */ }
+}
+
+function readSavedTreeView() {
+  try {
+    const raw = localStorage.getItem(TREE_VIEW_STORAGE_KEY);
+    if (!raw) return null;
+    const saved = JSON.parse(raw);
+    if (!saved || typeof saved !== 'object') return null;
+    return saved;
+  } catch { return null; }
+}
+
+function restoreTreeView() {
+  const saved = readSavedTreeView();
+  if (!saved) return false;
+  const validSections = new Set(Object.keys(state.data.sectionColors || {}));
+  const savedSections = Array.isArray(saved.appliedSections)
+    ? saved.appliedSections.filter((section) => validSections.has(section))
+    : [];
+  if (savedSections.length) {
+    state.selectedSections = new Set(savedSections);
+    state.appliedSections = new Set(savedSections);
+    for (const input of qa('#section-options input[type="checkbox"]')) input.checked = state.selectedSections.has(input.value);
+    state.sectionView = state.appliedSections.size === 1 ? [...state.appliedSections][0] : null;
+    if (state.sectionView) {
+      const roots = new Set([...state.trees].filter(([, tree]) => (tree.sections || []).includes(state.sectionView)).map(([rootId]) => rootId));
+      packRoots(roots);
+    } else {
+      restoreOriginalLayout();
+    }
+  }
+  state.focusedRootId = saved.focusedRootId && state.trees.has(saved.focusedRootId) ? saved.focusedRootId : null;
+  applyVisibility();
+  const scale = Number(saved.scale);
+  setScale(Number.isFinite(scale) ? scale : 1, { preserveFocus: false });
+  requestAnimationFrame(() => {
+    viewport.scrollLeft = Math.max(0, Number(saved.scrollLeft) || 0);
+    viewport.scrollTop = Math.max(0, Number(saved.scrollTop) || 0);
+    syncYearAxisScroll();
+    if (saved.selectedPersonId && state.people.has(saved.selectedPersonId)) {
+      selectPerson(saved.selectedPersonId, { locate: false });
+    }
+  });
+  return true;
+}
+
 function bindInfoPanel() {
   const open = q('#info-button');
   const dialog = q('#info-dialog');
@@ -759,8 +899,10 @@ async function main() {
     renderSectionFilter();
     status.hidden = true;
     viewport.hidden = false;
-    setScale(window.matchMedia('(max-width: 820px), (pointer: coarse) and (max-width: 950px)').matches ? 0.8 : 1, { preserveFocus: false });
-    applyVisibility();
+    if (!restoreTreeView()) {
+      setScale(window.matchMedia('(max-width: 820px), (pointer: coarse) and (max-width: 950px)').matches ? 0.8 : 1, { preserveFocus: false });
+      applyVisibility();
+    }
     requestAnimationFrame(syncYearAxisGeometry);
   } catch (error) {
     console.error(error);
@@ -774,6 +916,8 @@ q('#zoom-out').addEventListener('click', () => setScale(state.scale / 1.15));
 q('#zoom-reset').addEventListener('click', () => setScale(1));
 q('#zoom-fit')?.addEventListener('click', fitVisible);
 viewport.addEventListener('scroll', syncYearAxisScroll, { passive: true });
+window.addEventListener('pagehide', saveTreeView);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveTreeView(); });
 window.addEventListener('resize', () => { syncYearAxisGeometry(); renderYearAxis(); }, { passive: true });
 q('#search').addEventListener('input', updateSearchResults);
 q('#search').addEventListener('keydown', (event) => {
@@ -782,7 +926,7 @@ q('#search').addEventListener('keydown', (event) => {
     if (first) {
       event.preventDefault();
       selectPerson(first.id, { locate: true });
-      q('#search-results').hidden = true;
+      clearSearchAfterSelection();
     }
   }
   if (event.key === 'Escape') q('#search-results').hidden = true;

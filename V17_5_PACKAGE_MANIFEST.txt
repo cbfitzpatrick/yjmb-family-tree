@@ -1,0 +1,39 @@
+YJMB v17.5 drop-in hotfix
+
+Changed project files:
+- CHANGELOG_V17_5.md
+- V17_5_PACKAGE_MANIFEST.txt
+- yjmb_schema.py
+- yjmb_taxonomy.py
+- fullBandTreeGenerator.py
+- apply_secure_submission.py
+- process_secure_queue.py
+- verify_web_tree_parity.py
+- .github/workflows/process-secure-submissions.yml
+- publish-ui-only.ps1
+- web_template/tree.html
+- web_template/styles.css
+- web_template/app.js
+- web_template/developer-export.js
+- web_template/correction.html
+- web_template/correction.js
+- web_template/add-yourself.html
+- web_template/add-yourself.js
+- web_template/admin.js
+- web_template/rat-parent-icon.png
+- web_template/section-leader-icon.png
+- web_template/band-club-icon.png
+- docs/tree.html
+- docs/styles.css
+- docs/app.js
+- docs/developer-export.js
+- docs/correction.html
+- docs/correction.js
+- docs/add-yourself.html
+- docs/add-yourself.js
+- docs/admin.js
+- docs/rat-parent-icon.png
+- docs/section-leader-icon.png
+- docs/band-club-icon.png
+
+No workbook, secret, encrypted master workbook, or plaintext tree data is included.
