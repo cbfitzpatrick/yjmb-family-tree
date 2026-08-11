@@ -421,13 +421,21 @@ def apply_field_changes(ws, row, changes_payload, labels, label_to_col, changes,
 
 def apply_correction(ws, header_row, labels, label_to_col, payload, changes):
     row = row_for_id(ws, header_row, payload.get("personId"))
-    apply_field_changes(ws, row, payload.get("changes"), labels, label_to_col, changes, stale_check=True)
+    # Member corrections intentionally apply against the authoritative workbook
+    # even when the browser's encrypted-tree snapshot is older. change_cell()
+    # records the workbook's *actual* current value in the encrypted changelog,
+    # so the edit remains safely revertible without turning harmless snapshot
+    # drift into an administrator-review loop. Structural validation still runs.
+    apply_field_changes(ws, row, payload.get("changes"), labels, label_to_col, changes, stale_check=False)
     return row, f"Updated {norm(payload.get('personId'))}"
 
 
 def apply_admin_patch(ws, header_row, labels, label_to_col, payload, changes):
     row = row_for_id(ws, header_row, payload.get("personId"))
-    apply_field_changes(ws, row, payload.get("changes"), labels, label_to_col, changes, stale_check=not bool(payload.get("force")))
+    # An authenticated administrator patch follows the same authoritative-value
+    # rule. The submitted ``before`` value is UI context only; the changelog
+    # captures the real workbook value that was replaced.
+    apply_field_changes(ws, row, payload.get("changes"), labels, label_to_col, changes, stale_check=False)
     return row, f"Admin edited {norm(payload.get('personId'))}"
 
 
