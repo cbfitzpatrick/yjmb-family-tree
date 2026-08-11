@@ -1,0 +1,57 @@
+YJMB v16 cumulative drop-in upgrade
+===================================
+
+This overlay includes the v15 upgrade plus v16 revisions. It is intended to be
+copied over an existing configured pre-v15 project.
+
+INTENTIONALLY NOT INCLUDED
+--------------------------
+- YJMB Trees.xlsx
+- access_secrets.json
+- .dev.vars / .env secret files
+- secure/ generated encrypted/private payloads
+- Git metadata
+- Cloudflare/GitHub secret values
+
+NEW/REVISED IN V16
+------------------
+- section normalization with subsection/detail retention
+- smartphone-only responsive tree/questionnaire/gate refinements
+- compact bug-report icon
+- compact spacing for people with neither a VET nor a RAT
+- Guard Captain formal leadership + flag icon
+- extractMarriedNamesFromNotes.py
+- full Current/Married Name display in person details
+- fail-closed Git-index handling in verify_public_repo.py
+
+See README_DROP_IN_UPGRADE_V16.md for the exact installation/deployment flow.
+
+FILES IN THIS PACKAGE
+---------------------
+.gitignore
+CHANGELOG_GITHUB_INTERACTIVE.md
+CHANGELOG_V15.md
+CHANGELOG_V16.md
+GITHUB_SETUP.md
+README.md
+README_DROP_IN_UPGRADE_V15.md
+README_DROP_IN_UPGRADE_V16.md
+README_V15_DATA_TOOLS.md
+README_V16_DATA_TOOLS.md
+V16_PACKAGE_MANIFEST.txt
+apply_secure_submission.py
+assignLeadershipFromNotes.py
+classifyLeadershipPositions.py
+createSafeDebugBundle.py
+extractMarriedNamesFromNotes.py
+fullBandTreeGenerator.py
+normalizeSectionNames.py
+verify_public_repo.py
+web_template/add-yourself.html
+web_template/add-yourself.js
+web_template/admin-mail.js
+web_template/app.js
+web_template/gate.css
+web_template/styles.css
+web_template/tree.html
+yjmb_taxonomy.py

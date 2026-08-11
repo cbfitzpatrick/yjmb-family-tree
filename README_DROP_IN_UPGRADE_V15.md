@@ -1,5 +1,7 @@
 # v15 drop-in upgrade
 
+> Historical instructions. For a project that has not yet installed v15, use the cumulative `README_DROP_IN_UPGRADE_V16.md` instead.
+
 This upgrade is designed to be copied over an already configured v14 project. It does not require changing access answers, Cloudflare secrets, GitHub Actions secrets, Worker routes, or encryption keys.
 
 New source files:

@@ -50,7 +50,7 @@ def find_col(headers: dict[int, str], *names: str) -> int | None:
 
 
 def backup(path: Path) -> Path:
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     folder = path.parent / "backups" / "data_cleanup" / stamp
     folder.mkdir(parents=True, exist_ok=True)
     target = folder / path.name

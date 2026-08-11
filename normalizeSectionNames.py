@@ -9,7 +9,10 @@ The script updates:
   * VET and RAT relationship section text in the final (...) group
   * Section Nickname(s) and Specific Instrument(s) section labels before ':'
 
-If a cell contains unexplained text, it is reported and left unchanged.
+Broad section names are canonicalized while recognized subsection/instrument
+information is retained, e.g. "Alto Sax" -> "Sax/Saxophone — Alto Saxophone" and
+"Rifle" -> "Guard — Rifle". If a cell contains unexplained text, it is
+reported and left unchanged instead of discarding the extra detail.
 """
 from __future__ import annotations
 
@@ -21,7 +24,15 @@ from pathlib import Path
 
 from openpyxl import load_workbook
 
-from yjmb_taxonomy import canonical_formal_roles, canonical_section_text, formal_roles_in_text, key, norm, section_residual_words, strip_formal_role_phrases
+from yjmb_taxonomy import (
+    canonical_formal_roles,
+    canonical_section_text_with_details,
+    formal_roles_in_text,
+    key,
+    norm,
+    section_residual_words,
+    strip_formal_role_phrases,
+)
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_WORKBOOK = SCRIPT_DIR / "YJMB Trees.xlsx"
@@ -53,7 +64,7 @@ def normalize_section_value(raw: object) -> tuple[str | None, str | None]:
     text = norm(raw)
     if not text:
         return None, None
-    canonical = canonical_section_text(text)
+    canonical = canonical_section_text_with_details(text)
     if not canonical:
         return None, f"no recognized section in {text!r}"
     residual = section_residual_words(text)
@@ -101,7 +112,7 @@ def normalize_labeled_pairs(raw: object) -> tuple[str | None, str | None]:
 
 
 def backup(workbook: Path) -> Path:
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     folder = workbook.parent / "backups" / "data_cleanup" / stamp
     folder.mkdir(parents=True, exist_ok=True)
     target = folder / workbook.name

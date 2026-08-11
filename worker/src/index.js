@@ -159,33 +159,44 @@ async function scoreSubmission(payload, request, access, env) {
   const reasons = [];
   let score = 0;
   const serialized = JSON.stringify(payload);
-  const self = payload?.self || {};
-  const year = Number(self.ratYear);
+  const kind = normalize(payload?.kind || 'addition');
   const current = new Date().getUTCFullYear();
-  if (!String(self.givenPreferredName || '').trim() || !String(self.familyMaidenName || '').trim() || !Number.isInteger(year) || year < 1908 || year > current + 1) {
-    return { hardReject: true, score: 99, reasons: ['Missing or invalid required identity/year fields.'] };
+
+  if (kind === 'correction') {
+    if (!/^row-\d+$/.test(String(payload?.personId || '')) || !Array.isArray(payload?.changes) || payload.changes.length === 0) {
+      return { hardReject: true, score: 99, reasons: ['Correction is missing a valid person ID or field changes.'] };
+    }
+    if (payload.changes.length > 80) { score += 4; reasons.push('Correction edits an unusually large number of fields.'); }
+  } else {
+    const self = payload?.self || {};
+    const year = Number(self.ratYear);
+    if (!String(self.givenPreferredName || '').trim() || !String(self.familyMaidenName || '').trim() || !Number.isInteger(year) || year < 1908 || year > current + 1) {
+      return { hardReject: true, score: 99, reasons: ['Missing or invalid required identity/year fields.'] };
+    }
+    if (!Array.isArray(self.sections) || !self.sections.length) return { hardReject: true, score: 99, reasons: ['At least one section is required.'] };
+    if (String(self.givenPreferredName).length > 80 || String(self.familyMaidenName).length > 100) { score += 3; reasons.push('Unusually long identity field.'); }
+    if ((payload.rats || []).length > 8) { score += 2; reasons.push('Unusually large RAT list.'); }
+    if ((self.sections || []).length > 4) { score += 1; reasons.push('Unusually large section history.'); }
+    if (String(payload.favoriteTechBandMemory || '').length > 3000) { score += 2; reasons.push('Very long free-text memory.'); }
+    if (Object.keys(payload.notes || {}).length > 8) { score += 1; reasons.push('Large number of profile notes.'); }
   }
-  if (!Array.isArray(self.sections) || !self.sections.length) return { hardReject: true, score: 99, reasons: ['At least one section is required.'] };
-  if (serialized.length > 60000) { score += 5; reasons.push('Submission payload is unusually large.'); }
-  if (String(self.givenPreferredName).length > 80 || String(self.familyMaidenName).length > 100) { score += 3; reasons.push('Unusually long identity field.'); }
-  if ((payload.rats || []).length > 8) { score += 2; reasons.push('Unusually large RAT list.'); }
-  if ((self.sections || []).length > 4) { score += 1; reasons.push('Unusually large section history.'); }
-  if (String(payload.favoriteTechBandMemory || '').length > 3000) { score += 2; reasons.push('Very long free-text memory.'); }
-  if (Object.keys(payload.notes || {}).length > 8) { score += 1; reasons.push('Large number of third-party notes.'); }
-  const suspicious = /<\s*script\b|javascript\s*:|data\s*:\s*text\/html|https?:\/\//i;
-  if (walkStrings(payload).some((text) => suspicious.test(text))) { score += 4; reasons.push('Executable markup or external URL-like content detected.'); }
+
+  if (serialized.length > 80000) { score += 5; reasons.push('Submission payload is unusually large.'); }
+  const suspicious = /<\s*script\b|javascript\s*:|data\s*:\s*text\/html/i;
+  if (walkStrings(payload).some((text) => suspicious.test(text))) {
+    return { hardReject: true, score: 99, reasons: ['Executable markup was detected.'] };
+  }
 
   const ipKey = await privacyKey(request, env);
   const hour = await kvCount(env, `submit-hour:${ipKey}`, 3600);
   const day = await kvCount(env, `submit-day:${ipKey}`, 86400);
-  if (hour > 2) { score += 3; reasons.push('High submission frequency this hour.'); }
-  if (day > 5) { score += 5; reasons.push('High submission frequency this day.'); }
+  if (hour > 4) { score += 3; reasons.push('High submission frequency this hour.'); }
+  if (day > 12) { score += 5; reasons.push('High submission frequency this day.'); }
 
-  const identity = normalize(`${self.givenPreferredName}|${self.familyMaidenName}|${year}`);
-  const fp = b64url(await hmacBytes(env.SESSION_SIGNING_KEY, `submission:${identity}`)).slice(0, 40);
-  if (env.ABUSE_KV && await env.ABUSE_KV.get(`identity:${fp}`)) { score += 4; reasons.push('Repeated identity submission.'); }
-  if (env.ABUSE_KV) await env.ABUSE_KV.put(`identity:${fp}`, access.jti || '1', { expirationTtl: 7 * 86400 });
-  return { hardReject: false, score, reasons, fingerprint: fp };
+  // v17 does not make normal members wait for admin approval. Risk scoring is
+  // retained as audit metadata; structural conflicts can still be held by the
+  // workbook updater instead of overwriting conflicting data.
+  return { hardReject: false, score, reasons, fingerprint: access?.jti || '' };
 }
 async function encryptSubmission(value, env) {
   const keyBytes = fromB64(env.SUBMISSION_KEY_B64 || '');
@@ -214,28 +225,63 @@ async function github(path, options, env) {
   return body;
 }
 
-async function getRepositoryTextFile(path, env) {
+async function githubContent(path, env, { method = 'GET', body = null, allow404 = false } = {}) {
   const owner = env.GITHUB_OWNER || 'cbfitzpatrick';
   const repo = env.GITHUB_REPO || 'yjmb-family-tree';
-  const encodedPath = path.split('/').map(encodeURIComponent).join('/');
-  const branch = encodeURIComponent(env.GITHUB_BRANCH || 'main');
+  const encodedPath = String(path).split('/').map(encodeURIComponent).join('/');
+  const branch = env.GITHUB_BRANCH || 'main';
+  const suffix = method === 'GET' ? `?ref=${encodeURIComponent(branch)}` : '';
   const response = await fetch(
-    `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${encodedPath}?ref=${branch}`,
+    `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${encodedPath}${suffix}`,
     {
-      method: 'GET',
+      method,
       headers: {
-        'Accept': 'application/vnd.github.raw+json',
+        'Accept': 'application/vnd.github+json',
         'Authorization': `Bearer ${env.GITHUB_TOKEN}`,
         'X-GitHub-Api-Version': '2022-11-28',
         'User-Agent': 'yjmb-family-tree-worker',
+        ...(body ? { 'Content-Type': 'application/json' } : {}),
       },
+      ...(body ? { body: JSON.stringify(body) } : {}),
     },
   );
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`GitHub raw contents API ${response.status}: ${text}`);
-  }
-  return response.text();
+  const responseText = await response.text();
+  let parsed = {};
+  try { parsed = responseText ? JSON.parse(responseText) : {}; } catch { parsed = { raw: responseText }; }
+  if (response.status === 404 && allow404) return null;
+  if (!response.ok) throw new Error(`GitHub contents API ${response.status}: ${parsed.message || responseText}`);
+  return parsed;
+}
+
+async function getRepositoryTextFile(path, env) {
+  const item = await githubContent(path, env);
+  if (!item || Array.isArray(item) || !item.content) throw new Error(`Repository file ${path} did not contain file content.`);
+  return decoder.decode(fromB64(String(item.content).replace(/\s+/g, '')));
+}
+
+async function listRepositoryDirectory(path, env) {
+  const listing = await githubContent(path, env, { allow404: true });
+  if (listing === null) return [];
+  if (!Array.isArray(listing)) throw new Error(`${path} is not a repository directory.`);
+  return listing;
+}
+
+async function putRepositoryTextFile(path, text, env, message) {
+  const existing = await githubContent(path, env, { allow404: true });
+  const body = {
+    message,
+    content: b64(encoder.encode(text)),
+    branch: env.GITHUB_BRANCH || 'main',
+  };
+  if (existing?.sha) body.sha = existing.sha;
+  return githubContent(path, env, { method: 'PUT', body });
+}
+
+async function deleteRepositoryFile(path, sha, env, message) {
+  return githubContent(path, env, {
+    method: 'DELETE',
+    body: { message, sha, branch: env.GITHUB_BRANCH || 'main' },
+  });
 }
 
 async function decryptMasterWorkbookEnvelope(envelopeText, env) {
@@ -255,29 +301,42 @@ async function decryptMasterWorkbookEnvelope(envelopeText, env) {
   return new Uint8Array(plaintext);
 }
 
-async function developerExport(request, env, access, common) {
-  const configuredKey = String(env.DEVELOPER_EXPORT_KEY || '');
-  if (configuredKey.length < 32) {
-    return json({ error: 'Developer export is not configured.' }, 503, common);
+async function decryptSubmissionEnvelope(envelope, env) {
+  if (!envelope || envelope.format !== 'yjmb-secure-submission-v1' || envelope.cipher !== 'AES-256-GCM') {
+    throw new Error('Unsupported protected submission format.');
   }
-  const masterKey = fromB64(env.MASTER_WORKBOOK_KEY_B64 || '');
-  if (masterKey.length !== 32) {
-    return json({ error: 'Protected workbook export key is not configured.' }, 503, common);
-  }
+  const keyBytes = fromB64(env.SUBMISSION_KEY_B64 || '');
+  if (keyBytes.length !== 32) throw new Error('SUBMISSION_KEY_B64 must decode to 32 bytes.');
+  const key = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-GCM' }, false, ['decrypt']);
+  const plaintext = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: fromB64(envelope.iv || ''), tagLength: 128 },
+    key,
+    fromB64(envelope.ciphertext || ''),
+  );
+  return JSON.parse(decoder.decode(new Uint8Array(plaintext)));
+}
 
+async function developerKeyAccepted(request, env, { countFailure = true } = {}) {
+  const configuredKey = String(env.DEVELOPER_EXPORT_KEY || '');
+  if (configuredKey.length < 32) return { ok: false, status: 503, error: 'Developer authorization is not configured.' };
   const ipKey = await privacyKey(request, env);
   const failures = Number(env.ABUSE_KV ? await env.ABUSE_KV.get(`developer-export-fail-hour:${ipKey}`) || 0 : 0);
-  if (failures >= 6) return json({ error: 'Too many developer export attempts.' }, 429, common);
-
+  if (failures >= 8) return { ok: false, status: 429, error: 'Too many developer authorization attempts.' };
   const suppliedKey = request.headers.get('X-Developer-Key') || '';
   if (!suppliedKey || !(await constantTimeTextEqual(suppliedKey, configuredKey))) {
-    await kvCount(env, `developer-export-fail-hour:${ipKey}`, 3600);
-    return json({ error: 'Developer authorization failed.' }, 403, common);
+    if (countFailure) await kvCount(env, `developer-export-fail-hour:${ipKey}`, 3600);
+    return { ok: false, status: 403, error: 'Developer authorization failed.' };
   }
+  return { ok: true, status: 200, ipKey };
+}
 
-  const successCount = await kvCount(env, `developer-export-success-hour:${ipKey}`, 3600);
+async function developerExport(request, env, access, common) {
+  const auth = await developerKeyAccepted(request, env);
+  if (!auth.ok) return json({ error: auth.error }, auth.status, common);
+  const masterKey = fromB64(env.MASTER_WORKBOOK_KEY_B64 || '');
+  if (masterKey.length !== 32) return json({ error: 'Protected workbook export key is not configured.' }, 503, common);
+  const successCount = await kvCount(env, `developer-export-success-hour:${auth.ipKey}`, 3600);
   if (successCount > 8) return json({ error: 'Developer export rate limit reached.' }, 429, common);
-
   const envelopeText = await getRepositoryTextFile('secure/master_workbook.enc', env);
   const workbookBytes = await decryptMasterWorkbookEnvelope(envelopeText, env);
   const date = new Date().toISOString().slice(0, 10);
@@ -297,25 +356,10 @@ async function developerExport(request, env, access, common) {
 
 async function putEncryptedSubmission(id, route, encrypted, env) {
   const path = `.secure_submissions/${route}/${id}.enc.json`;
-  const content = b64(encoder.encode(JSON.stringify(encrypted)));
-  await github(`/contents/${path.split('/').map(encodeURIComponent).join('/')}`, {
-    method: 'PUT',
-    body: JSON.stringify({ message: `Queue protected YJMB submission ${id}`, content, branch: env.GITHUB_BRANCH || 'main' }),
-  }, env);
+  await putRepositoryTextFile(path, JSON.stringify(encrypted), env, `Queue protected YJMB submission ${id}`);
   return path;
 }
-async function createReviewIssue(id, path, score, reasons, env) {
-  const assignees = env.ADMIN_GITHUB_USER ? [env.ADMIN_GITHUB_USER] : [];
-  const safeReasons = reasons.length ? reasons.map((r) => `- ${r}`).join('\n') : '- Automated conflict/review routing.';
-  return github('/issues', {
-    method: 'POST',
-    body: JSON.stringify({
-      title: `[Protected submission review] ${id}`,
-      body: `A protected YJMB tree submission was diverted from automatic application.\n\nEncrypted queue file: \`${path}\`\nRisk score: ${score}\n\nRouting reasons:\n${safeReasons}\n\nNo member-supplied profile data is included in this Issue. Review/decrypt the protected file locally before approving it.`,
-      assignees,
-    }),
-  }, env);
-}
+
 async function submit(request, env, access) {
   const body = await request.json().catch(() => ({}));
   const turnstile = await validateTurnstile(String(body.turnstileToken || ''), request, env);
@@ -325,12 +369,133 @@ async function submit(request, env, access) {
   const risk = await scoreSubmission(payload, request, access, env);
   if (risk.hardReject) return { body: { error: 'Submission failed required field validation.' }, status: 400 };
   const id = crypto.randomUUID();
-  const route = risk.score >= Number(env.REVIEW_SCORE_THRESHOLD || 3) ? 'review' : 'auto';
-  const protectedValue = { id, receivedAt: new Date().toISOString(), risk: { score: risk.score, reasons: risk.reasons }, payload };
+  // v17: ordinary authenticated member changes go straight to the protected
+  // automatic queue. The workbook-side updater still fails safely on structural
+  // conflicts and moves only those conflicts into review.
+  const route = 'auto';
+  const protectedValue = {
+    id,
+    receivedAt: new Date().toISOString(),
+    risk: { score: risk.score, reasons: risk.reasons },
+    payload,
+  };
   const encrypted = await encryptSubmission(protectedValue, env);
-  const path = await putEncryptedSubmission(id, route, encrypted, env);
-  if (route === 'review') await createReviewIssue(id, path, risk.score, risk.reasons, env);
+  await putEncryptedSubmission(id, route, encrypted, env);
   return { body: { status: route, submissionId: id }, status: 200 };
+}
+
+function safeAdminRequest(value, queue, filename) {
+  const payload = value?.payload && typeof value.payload === 'object' ? value.payload : {};
+  const self = payload.self && typeof payload.self === 'object' ? payload.self : {};
+  return {
+    id: String(value?.id || filename.replace(/\.enc\.json$/i, '')),
+    queue,
+    receivedAt: value?.receivedAt || '',
+    risk: value?.risk || { score: 0, reasons: [] },
+    kind: payload.kind || 'addition',
+    personId: payload.personId || null,
+    displayName: [self.givenPreferredName, self.familyMaidenName].filter(Boolean).join(' ') || payload.personId || 'Protected update',
+    payload,
+  };
+}
+
+async function readProtectedDirectory(directory, queue, env, limit = 200) {
+  const listing = await listRepositoryDirectory(directory, env);
+  const files = listing
+    .filter((item) => item.type === 'file' && /\.enc\.json$/i.test(item.name))
+    .sort((a, b) => String(b.name).localeCompare(String(a.name)))
+    .slice(0, limit);
+  const results = [];
+  for (const item of files) {
+    try {
+      const text = await getRepositoryTextFile(item.path, env);
+      const envelope = JSON.parse(text);
+      const value = await decryptSubmissionEnvelope(envelope, env);
+      results.push({ ...safeAdminRequest(value, queue, item.name), path: item.path });
+    } catch (error) {
+      results.push({ id: item.name.replace(/\.enc\.json$/i, ''), queue, path: item.path, error: `Could not decrypt: ${error.message}` });
+    }
+  }
+  return results;
+}
+
+async function adminStatus(request, env, common) {
+  const auth = await developerKeyAccepted(request, env);
+  if (!auth.ok) return json({ error: auth.error }, auth.status, { ...common, 'Cache-Control': 'no-store' });
+  return json({ ok: true }, 200, { ...common, 'Cache-Control': 'no-store' });
+}
+
+async function adminRequests(request, env, common) {
+  const auth = await developerKeyAccepted(request, env);
+  if (!auth.ok) return json({ error: auth.error }, auth.status, { ...common, 'Cache-Control': 'no-store' });
+  const [review, auto] = await Promise.all([
+    readProtectedDirectory('.secure_submissions/review', 'review', env),
+    readProtectedDirectory('.secure_submissions/auto', 'auto', env),
+  ]);
+  return json({ review, auto }, 200, { ...common, 'Cache-Control': 'no-store' });
+}
+
+async function adminRequestAction(request, env, common) {
+  const auth = await developerKeyAccepted(request, env);
+  if (!auth.ok) return json({ error: auth.error }, auth.status, { ...common, 'Cache-Control': 'no-store' });
+  const body = await request.json().catch(() => ({}));
+  const id = String(body.id || '').replace(/[^A-Za-z0-9_.-]/g, '');
+  const queue = body.queue === 'auto' ? 'auto' : body.queue === 'review' ? 'review' : '';
+  const action = String(body.action || '').toLowerCase();
+  if (!id || !queue || !['approve', 'deny'].includes(action)) return json({ error: 'Invalid request action.' }, 400, common);
+  if (action === 'approve' && queue !== 'review') return json({ error: 'Only review-queue items need approval.' }, 400, common);
+  const sourcePath = `.secure_submissions/${queue}/${id}.enc.json`;
+  const source = await githubContent(sourcePath, env, { allow404: true });
+  if (!source?.sha || !source.content) return json({ error: 'Pending request no longer exists.' }, 404, common);
+  if (action === 'deny') {
+    await deleteRepositoryFile(sourcePath, source.sha, env, `Deny protected YJMB submission ${id}`);
+    return json({ ok: true, status: 'denied', id }, 200, { ...common, 'Cache-Control': 'no-store' });
+  }
+  const targetPath = `.secure_submissions/auto/${id}.enc.json`;
+  const rawText = decoder.decode(fromB64(String(source.content).replace(/\s+/g, '')));
+  await putRepositoryTextFile(targetPath, rawText, env, `Approve protected YJMB submission ${id}`);
+  await deleteRepositoryFile(sourcePath, source.sha, env, `Move approved YJMB submission ${id} to automatic queue`);
+  return json({ ok: true, status: 'approved', id }, 200, { ...common, 'Cache-Control': 'no-store' });
+}
+
+async function adminChangelog(request, env, common) {
+  const auth = await developerKeyAccepted(request, env);
+  if (!auth.ok) return json({ error: auth.error }, auth.status, { ...common, 'Cache-Control': 'no-store' });
+  const listing = await listRepositoryDirectory('secure/changelog', env);
+  const files = listing
+    .filter((item) => item.type === 'file' && /\.enc\.json$/i.test(item.name))
+    .sort((a, b) => String(b.name).localeCompare(String(a.name)))
+    .slice(0, 150);
+  const entries = [];
+  for (const item of files) {
+    try {
+      const text = await getRepositoryTextFile(item.path, env);
+      entries.push(await decryptSubmissionEnvelope(JSON.parse(text), env));
+    } catch (error) {
+      entries.push({ id: item.name.replace(/\.enc\.json$/i, ''), error: `Could not decrypt changelog entry: ${error.message}` });
+    }
+  }
+  return json({ entries }, 200, { ...common, 'Cache-Control': 'no-store' });
+}
+
+async function adminAction(request, env, common) {
+  const auth = await developerKeyAccepted(request, env);
+  if (!auth.ok) return json({ error: auth.error }, auth.status, { ...common, 'Cache-Control': 'no-store' });
+  const body = await request.json().catch(() => ({}));
+  const payload = body.payload;
+  const kind = String(payload?.kind || '');
+  const allowed = new Set(['admin-patch', 'admin-add', 'admin-delete', 'admin-reciprocate', 'admin-revert']);
+  if (!payload || typeof payload !== 'object' || !allowed.has(kind)) return json({ error: 'Invalid administrator action.' }, 400, common);
+  if (JSON.stringify(payload).length > 120000) return json({ error: 'Administrator action is too large.' }, 400, common);
+  const id = crypto.randomUUID();
+  const protectedValue = {
+    id,
+    receivedAt: new Date().toISOString(),
+    risk: { score: 0, reasons: ['Authorized administrator action.'] },
+    payload,
+  };
+  await putEncryptedSubmission(id, 'auto', await encryptSubmission(protectedValue, env), env);
+  return json({ status: 'auto', submissionId: id }, 200, { ...common, 'Cache-Control': 'no-store' });
 }
 
 export default {
@@ -360,6 +525,14 @@ export default {
       if (url.pathname === '/developer/export' && request.method === 'POST') {
         const access = await requireAccess(request, env); if (!access) return json({ error: 'Access session expired.' }, 401, common);
         return developerExport(request, env, access, common);
+      }
+      if (url.pathname.startsWith('/admin/')) {
+        const access = await requireAccess(request, env); if (!access) return json({ error: 'Access session expired.' }, 401, common);
+        if (url.pathname === '/admin/status' && request.method === 'GET') return adminStatus(request, env, common);
+        if (url.pathname === '/admin/requests' && request.method === 'GET') return adminRequests(request, env, common);
+        if (url.pathname === '/admin/request-action' && request.method === 'POST') return adminRequestAction(request, env, common);
+        if (url.pathname === '/admin/changelog' && request.method === 'GET') return adminChangelog(request, env, common);
+        if (url.pathname === '/admin/action' && request.method === 'POST') return adminAction(request, env, common);
       }
       return json({ error: 'Not found.' }, 404, common);
     } catch (error) {

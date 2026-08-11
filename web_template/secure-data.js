@@ -79,7 +79,7 @@
     });
     let body = {};
     try { body = await response.json(); } catch { /* empty */ }
-    if (response.status === 401 || response.status === 403) { clearAccess(); throw new AccessRequiredError(); }
+    if (response.status === 401) { clearAccess(); throw new AccessRequiredError(); }
     if (!response.ok) throw new Error(body.error || `Access service returned HTTP ${response.status}.`);
     return body;
   }

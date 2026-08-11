@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>YJMB Tree Admin</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="admin-page">
+  <header class="admin-header">
+    <a class="back-link" href="tree.html">← Tree</a>
+    <h1>YJMB Admin</h1>
+    <span class="admin-spacer"></span>
+    <button id="admin-export" class="secondary-button" type="button" hidden>Export workbook</button>
+  </header>
+
+  <main class="admin-main">
+    <section id="admin-auth" class="admin-auth-card">
+      <h2>Administrator authorization</h2>
+      <p>Admin Mode requires your normal tree-access session plus the same separate developer key used by the protected workbook export. The key stays only in this browser tab's memory.</p>
+      <label class="form-field">
+        <span>Developer export/admin key</span>
+        <input id="admin-key" type="password" autocomplete="off" spellcheck="false">
+      </label>
+      <div class="wizard-actions">
+        <button id="admin-unlock" class="primary-button" type="button">Open Admin Mode</button>
+      </div>
+      <p id="admin-auth-status" class="admin-status" role="status"></p>
+    </section>
+
+    <section id="admin-workspace" hidden>
+      <nav class="admin-tabs" aria-label="Admin views">
+        <button class="admin-tab" type="button" data-admin-tab="tree" aria-selected="true">Tree / Cards</button>
+        <button class="admin-tab" type="button" data-admin-tab="sheet" aria-selected="false">Spreadsheet</button>
+        <button class="admin-tab" type="button" data-admin-tab="requests" aria-selected="false">Change Requests</button>
+        <button class="admin-tab" type="button" data-admin-tab="reciprocity" aria-selected="false">Unreciprocated</button>
+        <button class="admin-tab" type="button" data-admin-tab="unknown" aria-selected="false">Unknown Instruments</button>
+        <button class="admin-tab" type="button" data-admin-tab="changelog" aria-selected="false">Changelog / Revert</button>
+      </nav>
+      <p id="admin-status" class="admin-status" role="status" aria-live="polite"></p>
+
+      <section class="admin-panel" data-admin-panel="tree">
+        <div class="admin-toolbar">
+          <input id="admin-person-search" type="search" placeholder="Find a person, nickname, year, section…">
+          <button id="admin-add-person" class="primary-button" type="button">＋ Add person</button>
+          <button id="admin-refresh-tree" class="secondary-button" type="button">Refresh view</button>
+        </div>
+        <div id="admin-tree-viewport" class="admin-tree-viewport">
+          <div id="admin-tree-holder" class="admin-tree-holder">
+            <svg id="admin-tree-connectors" class="admin-tree-connectors" aria-hidden="true"></svg>
+            <div id="admin-tree-cards" class="admin-tree-cards"></div>
+          </div>
+        </div>
+        <div id="admin-editor-wrap" hidden>
+          <div class="admin-toolbar">
+            <h2 id="admin-editor-title">Edit person</h2>
+            <button id="admin-save-person" class="primary-button" type="button">Save person</button>
+            <button id="admin-delete-person" class="danger-button" type="button">Delete person</button>
+            <button id="admin-cancel-edit" class="secondary-button" type="button">Close editor</button>
+          </div>
+          <div id="admin-editor" class="admin-editor"></div>
+        </div>
+      </section>
+
+      <section class="admin-panel" data-admin-panel="sheet" hidden>
+        <div class="admin-toolbar">
+          <input id="admin-sheet-search" type="search" placeholder="Filter spreadsheet rows…">
+          <button id="admin-sheet-save" class="primary-button" type="button">Save edited rows</button>
+          <span id="admin-sheet-dirty">0 edited cells</span>
+        </div>
+        <p>Click a cell to edit it. Saving sends only changed cells through the protected updater and records them in the changelog.</p>
+        <div id="admin-table-wrap" class="admin-table-wrap"></div>
+      </section>
+
+      <section class="admin-panel" data-admin-panel="requests" hidden>
+        <div class="admin-toolbar">
+          <button id="admin-refresh-requests" class="secondary-button" type="button">Refresh requests</button>
+        </div>
+        <p>Normal v17 updates go directly to the protected automatic queue. Only workbook conflicts are held for review. You can deny a still-pending automatic update before it runs, or approve/retry/deny a conflict.</p>
+        <div id="admin-request-list" class="admin-list"></div>
+      </section>
+
+      <section class="admin-panel" data-admin-panel="reciprocity" hidden>
+        <div class="admin-toolbar">
+          <button id="admin-refresh-reciprocity" class="secondary-button" type="button">Refresh list</button>
+        </div>
+        <p>These are relationship claims present on only one profile. Validation writes the reciprocal VET/RAT side only when the workbook can do so safely.</p>
+        <div id="admin-reciprocity-list" class="admin-list"></div>
+      </section>
+
+      <section class="admin-panel" data-admin-panel="unknown" hidden>
+        <div class="admin-toolbar">
+          <button id="admin-refresh-unknown" class="secondary-button" type="button">Refresh list</button>
+        </div>
+        <p>Review instrument/section text that the taxonomy could not confidently categorize. “Drumline” is Battery and “Pit” is Front Ensemble.</p>
+        <div id="admin-unknown-list" class="admin-list"></div>
+      </section>
+
+      <section class="admin-panel" data-admin-panel="changelog" hidden>
+        <div class="admin-toolbar">
+          <button id="admin-refresh-changelog" class="secondary-button" type="button">Refresh changelog</button>
+        </div>
+        <p>Every successfully applied member/admin update is stored as an encrypted cell-level changelog entry. Revert is fail-safe: it stops if a later edit changed any affected cell.</p>
+        <div id="admin-changelog-list" class="admin-list"></div>
+      </section>
+    </section>
+  </main>
+
+  <script src="secure-data.js"></script>
+  <script src="admin.js"></script>
+</body>
+</html>

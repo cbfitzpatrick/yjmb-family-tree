@@ -1,5 +1,8 @@
 # v15 data cleanup and debugging tools
 
+> v16 supersedes this workflow for new upgrades. If v15 has not already been installed, use `README_V16_DATA_TOOLS.md` and the cumulative v16 drop-in instead.
+
+
 All workbook-changing tools are **scan-only by default**. Add `--apply` only after reviewing the proposed changes. Every applying tool creates a timestamped copy under `backups/data_cleanup/` before writing.
 
 ## Normalize section names

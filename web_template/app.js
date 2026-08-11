@@ -1,5 +1,8 @@
 'use strict';
 
+const q = (selector, root = document) => root.querySelector(selector);
+const qa = (selector, root = document) => [...root.querySelectorAll(selector)];
+
 const state = {
   data: null,
   people: new Map(),
@@ -8,13 +11,16 @@ const state = {
   scale: 1,
   focusedRootId: null,
   selectedSections: new Set(),
+  appliedSections: new Set(),
   selectedPersonId: null,
   visiblePeople: new Set(),
   yearAxisWidth: 0,
   contentOffsetX: 0,
+  rootShiftX: new Map(),
+  displayWidth: 0,
+  sectionView: null,
 };
 
-const q = (selector) => document.querySelector(selector);
 const viewport = q('#viewport');
 const scaledStage = q('#scaled-stage');
 const stage = q('#stage');
@@ -24,6 +30,9 @@ const connectorSvg = q('#connectors');
 const yearAxis = q('#year-axis');
 const yearAxisTrack = q('#year-axis-track');
 const status = q('#status');
+
+const SPECIAL_SECTION_BLUE = '#d5defe';
+const PACKED_TREE_GAP = 28;
 
 function normalizeSearch(value) {
   return String(value ?? '').normalize('NFKD').toLowerCase().replace(/\s+/g, ' ').trim();
@@ -44,7 +53,7 @@ function svgLine(segment, color, width) {
 
 function renderBands(data) {
   bands.replaceChildren();
-  for (const band of data.yearBands) {
+  for (const band of data.yearBands || []) {
     const el = document.createElement('div');
     el.className = 'year-band';
     el.style.top = `${band.y}px`;
@@ -52,7 +61,6 @@ function renderBands(data) {
     bands.appendChild(el);
   }
 }
-
 
 function yearAxisFontSize() {
   return Math.max(9, Math.min(25, 25 * state.scale));
@@ -65,7 +73,7 @@ function measureYearAxisWidth() {
   const fontSize = yearAxisFontSize();
   if (!context) return Math.ceil(4.3 * fontSize);
   context.font = `800 ${fontSize}px Calibri, Arial, sans-serif`;
-  const widest = Math.max(0, ...(state.data.yearBands || []).map(band => context.measureText(String(band.label)).width));
+  const widest = Math.max(0, ...(state.data.yearBands || []).map((band) => context.measureText(String(band.label)).width));
   return Math.ceil(Math.max(widest + 18, fontSize * 3.6));
 }
 
@@ -75,7 +83,8 @@ function renderYearAxis() {
   const fontSize = yearAxisFontSize();
   const axisWidth = measureYearAxisWidth();
   state.yearAxisWidth = axisWidth;
-  state.contentOffsetX = axisWidth + 14;
+  // v17: no spacer is inserted between the frozen year rail and the stage.
+  state.contentOffsetX = axisWidth;
 
   yearAxis.style.width = `${axisWidth}px`;
   yearAxisTrack.style.width = `${axisWidth}px`;
@@ -94,18 +103,14 @@ function renderYearAxis() {
     yearAxisTrack.appendChild(label);
   }
 
-  // Reserve a real, unscaled gutter for the frozen year column. This keeps the
-  // leftmost card visible even at very small tree zoom levels.
   stage.style.left = `${state.contentOffsetX}px`;
-  scaledStage.style.width = `${state.contentOffsetX + state.data.width * state.scale}px`;
+  scaledStage.style.width = `${state.contentOffsetX + state.displayWidth * state.scale}px`;
   scaledStage.style.height = `${state.data.height * state.scale}px`;
   syncYearAxisGeometry();
 }
 
 function syncYearAxisScroll() {
   if (!yearAxisTrack || !viewport || viewport.hidden) return;
-  // The outer axis is fixed to the viewport, so horizontal scroll never moves
-  // it. Only the inner track follows vertical scrolling.
   yearAxisTrack.style.transform = `translate3d(0, ${-viewport.scrollTop}px, 0)`;
 }
 
@@ -118,51 +123,16 @@ function syncYearAxisGeometry() {
   syncYearAxisScroll();
 }
 
-function leadershipIconSvg(kind) {
-  const attrs = 'viewBox="0 0 18 18" aria-hidden="true"';
-  if (kind === 'section-leader') return `<svg ${attrs}><path d="M2 4.5 9 1.5l7 3M2 9 9 6l7 3M2 13.5l7-3 7 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>`;
-  if (kind === 'drum-major') return `<svg ${attrs}><path d="M4 15 14.5 3.5M2 6l4-3M2 10l5-3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="15" cy="3" r="2" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>`;
-  if (kind === 'rat-parent') return `<svg ${attrs}><circle cx="9" cy="3.5" r="2" fill="currentColor"/><circle cx="4" cy="14" r="2" fill="currentColor"/><circle cx="14" cy="14" r="2" fill="currentColor"/><path d="M9 5.5v4M4 9.5h10M4 9.5V12M14 9.5V12" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>`;
-  if (kind === 'informal-leadership') return `<svg ${attrs}><path d="M2 8.5 10 4v9L2 9.5Zm8-.8h2.5v1.8H10M5 10l2 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M14 5.5 17 4M14 9h3.5M14 12.5l3 1.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`;
-  return `<svg ${attrs}><path d="m9 1.5 2.1 4.4 4.9.7-3.5 3.4.8 4.9L9 12.6l-4.3 2.3.8-4.9L2 6.6l4.9-.7Z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>`;
-}
-
-function renderLeadershipLegend() {
-  const container = q('#leadership-icon-key');
-  if (!container) return;
-  const entries = [
-    ['section-leader', 'Section Leader'],
-    ['drum-major', 'Drum Major'],
-    ['rat-parent', 'RAT Parent'],
-    ['informal-leadership', 'Informal leadership'],
-    ['other-leadership', 'Other formal leadership'],
-  ];
-  container.replaceChildren();
-  for (const [kind, labelText] of entries) {
-    const row = document.createElement('div');
-    row.className = 'leadership-key-item';
-    const icon = document.createElement('span');
-    icon.innerHTML = leadershipIconSvg(kind);
-    const label = document.createElement('span');
-    label.textContent = labelText;
-    row.append(icon, label);
-    container.appendChild(row);
-  }
-}
-
 function buildTreeIndexes(data) {
   state.trees.clear();
   state.rootByPerson.clear();
-
   if (Array.isArray(data.trees) && data.trees.length) {
     for (const tree of data.trees) {
       state.trees.set(tree.rootId, tree);
-      for (const id of tree.memberIds) state.rootByPerson.set(id, tree.rootId);
+      for (const id of tree.memberIds || []) state.rootByPerson.set(id, tree.rootId);
     }
     return;
   }
-
-  // Compatibility fallback for schemaVersion 1 data.
   const rootOf = (person) => {
     let cursor = person;
     const seen = new Set();
@@ -172,7 +142,6 @@ function buildTreeIndexes(data) {
     }
     return cursor?.id ?? person.id;
   };
-
   const members = new Map();
   for (const person of data.people) {
     const rootId = rootOf(person);
@@ -181,27 +150,53 @@ function buildTreeIndexes(data) {
     members.get(rootId).push(person.id);
   }
   for (const [rootId, memberIds] of members) {
-    const sections = [...new Set(memberIds.flatMap(id => state.people.get(id)?.instruments || []))];
+    const sections = [...new Set(memberIds.flatMap((id) => state.people.get(id)?.instruments || []))];
     state.trees.set(rootId, { rootId, memberIds, sections });
   }
 }
 
 function renderConnectors(data) {
   connectorSvg.replaceChildren();
-  connectorSvg.setAttribute('width', data.width);
   connectorSvg.setAttribute('height', data.height);
-  connectorSvg.setAttribute('viewBox', `0 0 ${data.width} ${data.height}`);
-
-  for (const connector of data.connectors) {
+  for (const connector of data.connectors || []) {
     const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     group.classList.add('connector-group');
     group.dataset.parentId = connector.parentId;
     group.dataset.rootId = state.rootByPerson.get(connector.parentId) || '';
-    group.appendChild(svgLine(connector.parentStem, data.connectorColor, data.connectorWidth));
-    if (connector.siblingBus) group.appendChild(svgLine(connector.siblingBus, data.connectorColor, data.connectorWidth));
-    for (const stem of connector.childStems) group.appendChild(svgLine(stem, data.connectorColor, data.connectorWidth));
+    const segments = [connector.parentStem, ...(connector.siblingBus ? [connector.siblingBus] : []), ...(connector.childStems || [])];
+    for (const segment of segments) {
+      group.appendChild(svgLine(segment, data.connectorOutlineColor || '#FFFFFF', data.connectorOutlineWidth || ((data.connectorWidth || 9) + 4)));
+      group.appendChild(svgLine(segment, '#000000', data.connectorWidth || 9));
+    }
     connectorSvg.appendChild(group);
   }
+}
+
+function regularCardBackground(person) {
+  const colors = person.card?.sectionColors?.length ? person.card.sectionColors : ['#D3D3D3'];
+  if (colors.length === 1) return colors[0];
+  const stop = 100 / colors.length;
+  const parts = [];
+  colors.forEach((color, index) => {
+    parts.push(`${color} ${index * stop}%`, `${color} ${(index + 1) * stop}%`);
+  });
+  return `linear-gradient(90deg, ${parts.join(', ')})`;
+}
+
+function sectionViewCardBackground(person) {
+  const selected = state.sectionView;
+  if (!selected) return regularCardBackground(person);
+  const sections = (person.instruments || []).filter((section) => section && section !== 'unknown');
+  const inSection = sections.includes(selected);
+  if (!inSection) return SPECIAL_SECTION_BLUE;
+  const inAnotherSection = sections.some((section) => section !== selected);
+  return inAnotherSection
+    ? `linear-gradient(90deg, #FFFFFF 0 50%, ${SPECIAL_SECTION_BLUE} 50% 100%)`
+    : '#FFFFFF';
+}
+
+function bandClubIconSvg() {
+  return '<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8.1" fill="rgba(255,255,255,.88)" stroke="currentColor" stroke-width="1.4"/><path d="M11.4 5.1v7.1c-.8-.5-2.2-.4-3 .2-.9.7-1 1.8-.2 2.4.8.7 2.2.5 3.1-.2.6-.5.8-1.1.7-1.7V8.1l4-1V5.4Z" fill="currentColor"/></svg>';
 }
 
 function renderCards(data) {
@@ -218,42 +213,124 @@ function renderCards(data) {
       person.displayName,
       person.currentName,
       person.givenPreferredName,
-      person.nickname,
+      person.personalNickname || person.nickname,
+      person.sectionNicknames,
       person.familyMaidenName,
       person.marriedName,
       person.ratYearLabel,
       person.instrumentRaw,
       ...(person.instruments || []),
     ].filter(Boolean).join(' '));
-    button.style.left = `${card.x}px`;
-    button.style.top = `${card.y}px`;
     button.style.width = `${card.width}px`;
     button.style.height = `${card.height}px`;
     button.title = `${person.name} — ${person.ratYearLabel}`;
     button.setAttribute('aria-label', button.title);
 
-    const image = document.createElement('img');
-    image.src = card.image;
-    image.alt = person.name;
-    button.appendChild(image);
+    const builtCard = document.createElement('span');
+    builtCard.className = 'site-card';
+    builtCard.style.background = regularCardBackground(person);
+
+    const name = document.createElement('span');
+    name.className = 'site-card-name';
+    name.textContent = person.displayName || person.name;
+    builtCard.appendChild(name);
+
+    if (person.currentlyRat) {
+      const icon = document.createElement('img');
+      icon.className = 'card-status-icon rat-cap-icon';
+      icon.src = 'rat-cap-icon.png';
+      icon.alt = '';
+      icon.title = 'Current RAT';
+      builtCard.appendChild(icon);
+    }
+    if (person.bandClubLeadership) {
+      const icon = document.createElement('span');
+      icon.className = 'card-status-icon band-club-icon';
+      icon.title = 'Band Club leadership';
+      icon.innerHTML = bandClubIconSvg();
+      builtCard.appendChild(icon);
+    }
+
+    button.appendChild(builtCard);
     button.addEventListener('click', () => selectPerson(person.id, { locate: false }));
     cardsLayer.appendChild(button);
   }
+  applyDisplayPositions();
 }
 
-function setScale(next) {
+function displayXForPerson(person) {
+  return person.card.x + (state.rootShiftX.get(state.rootByPerson.get(person.id)) || 0);
+}
+
+function applyDisplayPositions() {
   if (!state.data) return;
+  stage.style.width = `${state.displayWidth}px`;
+  connectorSvg.setAttribute('width', state.displayWidth);
+  connectorSvg.setAttribute('viewBox', `0 0 ${state.displayWidth} ${state.data.height}`);
+  for (const button of qa('.card-button')) {
+    const person = state.people.get(button.dataset.personId);
+    if (!person) continue;
+    button.style.left = `${displayXForPerson(person)}px`;
+    button.style.top = `${person.card.y}px`;
+    q('.site-card', button).style.background = sectionViewCardBackground(person);
+  }
+  for (const group of qa('.connector-group')) {
+    const dx = state.rootShiftX.get(group.dataset.rootId) || 0;
+    group.setAttribute('transform', dx ? `translate(${dx} 0)` : '');
+  }
+  renderYearAxis();
+}
+
+function restoreOriginalLayout() {
+  state.rootShiftX.clear();
+  state.displayWidth = state.data.width;
+  applyDisplayPositions();
+}
+
+function packRoots(rootIds) {
+  const roots = [...rootIds]
+    .map((rootId) => state.trees.get(rootId))
+    .filter(Boolean)
+    .sort((a, b) => (a.bounds?.minX ?? 0) - (b.bounds?.minX ?? 0));
+  state.rootShiftX.clear();
+  let cursor = 0;
+  for (const tree of roots) {
+    const bounds = tree.bounds || boundsForPeople(new Set(tree.memberIds || []), { original: true });
+    if (!bounds) continue;
+    state.rootShiftX.set(tree.rootId, cursor - bounds.minX);
+    cursor += Math.max(1, bounds.maxX - bounds.minX) + PACKED_TREE_GAP;
+  }
+  state.displayWidth = Math.max(1, cursor ? cursor - PACKED_TREE_GAP : state.data.width);
+  applyDisplayPositions();
+}
+
+function captureViewportFocus() {
+  const anchorX = viewport.clientWidth / 2;
+  const anchorY = viewport.clientHeight / 2;
+  const logicalX = Math.max(0, (viewport.scrollLeft + anchorX - state.contentOffsetX) / Math.max(state.scale, .001));
+  const logicalY = Math.max(0, (viewport.scrollTop + anchorY) / Math.max(state.scale, .001));
+  return { anchorX, anchorY, logicalX, logicalY };
+}
+
+function setScale(next, { preserveFocus = true } = {}) {
+  if (!state.data) return;
+  const focus = preserveFocus ? captureViewportFocus() : null;
   state.scale = Math.max(.12, Math.min(3, next));
   stage.style.transform = `scale(${state.scale})`;
   q('#zoom-label').textContent = `${Math.round(state.scale * 100)}%`;
   renderYearAxis();
+  if (focus) {
+    viewport.scrollLeft = Math.max(0, state.contentOffsetX + focus.logicalX * state.scale - focus.anchorX);
+    viewport.scrollTop = Math.max(0, focus.logicalY * state.scale - focus.anchorY);
+    syncYearAxisScroll();
+  }
 }
 
 function treeMatchesSections(tree) {
   const totalSections = Object.keys(state.data.sectionColors || {}).length;
-  if (state.selectedSections.size === totalSections) return true;
-  if (state.selectedSections.size === 0) return false;
-  return (tree.sections || []).some(section => state.selectedSections.has(section));
+  if (state.appliedSections.size === totalSections) return true;
+  if (state.appliedSections.size === 0) return false;
+  return (tree.sections || []).some((section) => state.appliedSections.has(section));
 }
 
 function visibleRootIds() {
@@ -273,14 +350,9 @@ function applyVisibility({ fit = false } = {}) {
     for (const id of tree?.memberIds || []) state.visiblePeople.add(id);
   }
 
-  for (const button of document.querySelectorAll('.card-button')) {
-    button.classList.toggle('is-hidden', !state.visiblePeople.has(button.dataset.personId));
-  }
-  for (const group of document.querySelectorAll('.connector-group')) {
-    group.classList.toggle('is-hidden', !roots.has(group.dataset.rootId));
-  }
+  for (const button of qa('.card-button')) button.classList.toggle('is-hidden', !state.visiblePeople.has(button.dataset.personId));
+  for (const group of qa('.connector-group')) group.classList.toggle('is-hidden', !roots.has(group.dataset.rootId));
 
-  const totalTrees = state.trees.size;
   const summary = q('#filter-summary');
   if (state.focusedRootId) {
     const root = state.people.get(state.focusedRootId);
@@ -289,8 +361,13 @@ function applyVisibility({ fit = false } = {}) {
     q('#show-all-trees').hidden = false;
   } else {
     q('#show-all-trees').hidden = true;
-    q('#view-description').textContent = 'Full-band family-tree visualizer';
-    summary.textContent = `${roots.size} of ${totalTrees} family trees visible.`;
+    if (state.sectionView) {
+      q('#view-description').textContent = `${state.sectionView} family-tree view`;
+      summary.textContent = `${roots.size} connected famil${roots.size === 1 ? 'y' : 'ies'} contain at least one ${state.sectionView} member. White = selected section; blue = outside the section; split = both.`;
+    } else {
+      q('#view-description').textContent = 'Full-band family-tree visualizer';
+      summary.textContent = `${roots.size} of ${state.trees.size} family trees visible.`;
+    }
   }
 
   applySearchHighlight();
@@ -300,7 +377,9 @@ function applyVisibility({ fit = false } = {}) {
 function renderSectionFilter() {
   const container = q('#section-options');
   container.replaceChildren();
-  state.selectedSections = new Set(Object.keys(state.data.sectionColors || {}));
+  const sections = Object.keys(state.data.sectionColors || {});
+  state.selectedSections = new Set(sections);
+  state.appliedSections = new Set(sections);
 
   for (const [section, color] of Object.entries(state.data.sectionColors || {})) {
     const label = document.createElement('label');
@@ -312,8 +391,7 @@ function renderSectionFilter() {
     checkbox.addEventListener('change', () => {
       if (checkbox.checked) state.selectedSections.add(section);
       else state.selectedSections.delete(section);
-      state.focusedRootId = null;
-      applyVisibility({ fit: true });
+      q('#filter-summary').textContent = 'Selection changed. Choose Apply to load this view.';
     });
     const swatch = document.createElement('span');
     swatch.className = 'section-swatch';
@@ -325,27 +403,43 @@ function renderSectionFilter() {
   }
 }
 
-function setAllSections(checked) {
-  state.focusedRootId = null;
+function setAllSectionCheckboxes(checked) {
   state.selectedSections.clear();
-  for (const input of document.querySelectorAll('#section-options input[type="checkbox"]')) {
+  for (const input of qa('#section-options input[type="checkbox"]')) {
     input.checked = checked;
     if (checked) state.selectedSections.add(input.value);
   }
+  q('#filter-summary').textContent = 'Selection changed. Choose Apply to load this view.';
+}
+
+function applySectionSelection() {
+  state.focusedRootId = null;
+  state.appliedSections = new Set(state.selectedSections);
+  state.sectionView = state.appliedSections.size === 1 ? [...state.appliedSections][0] : null;
+  if (state.sectionView) {
+    const roots = new Set([...state.trees].filter(([, tree]) => (tree.sections || []).includes(state.sectionView)).map(([rootId]) => rootId));
+    packRoots(roots);
+  } else {
+    restoreOriginalLayout();
+  }
+  applyVisibility({ fit: true });
+}
+
+function loadFullTree() {
+  setAllSectionCheckboxes(true);
+  state.appliedSections = new Set(state.selectedSections);
+  state.sectionView = null;
+  state.focusedRootId = null;
+  restoreOriginalLayout();
   applyVisibility({ fit: true });
 }
 
 function personSearchText(person) {
   return normalizeSearch([
-    person.name,
-    person.displayName,
-    person.currentName,
-    person.givenPreferredName,
-    person.nickname,
-    person.familyMaidenName,
-    person.marriedName,
-    person.ratYearLabel,
-    person.instrumentRaw,
+    person.name, person.displayName, person.currentName, person.givenPreferredName,
+    person.personalNickname || person.nickname, person.sectionNicknames,
+    person.familyMaidenName, person.marriedName, person.ratYearLabel,
+    person.instrumentRaw, person.favoriteTechBandMemory,
   ].filter(Boolean).join(' '));
 }
 
@@ -353,18 +447,16 @@ function matchingPeople(term) {
   const normalized = normalizeSearch(term);
   if (!normalized) return [];
   const tokens = normalized.split(' ').filter(Boolean);
-  return state.data.people
-    .filter(person => {
-      const haystack = personSearchText(person);
-      return tokens.every(token => haystack.includes(token));
-    })
-    .sort((a, b) => {
-      const aName = normalizeSearch(a.name);
-      const bName = normalizeSearch(b.name);
-      const aPrefix = aName.startsWith(normalized) ? 0 : 1;
-      const bPrefix = bName.startsWith(normalized) ? 0 : 1;
-      return aPrefix - bPrefix || (a.ratYear ?? 9999) - (b.ratYear ?? 9999) || a.name.localeCompare(b.name);
-    });
+  return state.data.people.filter((person) => {
+    const haystack = personSearchText(person);
+    return tokens.every((token) => haystack.includes(token));
+  }).sort((a, b) => {
+    const aName = normalizeSearch(a.name);
+    const bName = normalizeSearch(b.name);
+    const aPrefix = aName.startsWith(normalized) ? 0 : 1;
+    const bPrefix = bName.startsWith(normalized) ? 0 : 1;
+    return aPrefix - bPrefix || (a.ratYear ?? 9999) - (b.ratYear ?? 9999) || a.name.localeCompare(b.name);
+  });
 }
 
 function updateSearchResults() {
@@ -372,13 +464,11 @@ function updateSearchResults() {
   const results = q('#search-results');
   const term = input.value.trim();
   applySearchHighlight();
-
   if (!term) {
     results.hidden = true;
     results.replaceChildren();
     return;
   }
-
   const people = matchingPeople(term).slice(0, 12);
   results.replaceChildren();
   if (!people.length) {
@@ -389,18 +479,16 @@ function updateSearchResults() {
     results.hidden = false;
     return;
   }
-
   for (const person of people) {
     const row = document.createElement('div');
     row.className = 'search-result';
     row.setAttribute('role', 'option');
-
     const personButton = document.createElement('button');
     personButton.type = 'button';
     personButton.className = 'search-person-button';
     const name = document.createElement('span');
     name.className = 'search-person-name';
-    name.textContent = person.name;
+    name.textContent = person.displayName || person.name;
     const meta = document.createElement('span');
     meta.className = 'search-person-meta';
     meta.textContent = `${person.ratYearLabel} · ${person.instrumentRaw || 'Unknown section'}`;
@@ -409,18 +497,15 @@ function updateSearchResults() {
       selectPerson(person.id, { locate: true });
       results.hidden = true;
     });
-
     const treeButton = document.createElement('button');
     treeButton.type = 'button';
     treeButton.className = 'search-tree-button';
     treeButton.textContent = 'Show tree';
-    treeButton.title = `Show the complete connected family tree containing ${person.name}`;
     treeButton.addEventListener('click', () => {
       focusTreeForPerson(person.id);
       selectPerson(person.id, { locate: true });
       results.hidden = true;
     });
-
     row.append(personButton, treeButton);
     results.appendChild(row);
   }
@@ -429,7 +514,7 @@ function updateSearchResults() {
 
 function applySearchHighlight() {
   const term = normalizeSearch(q('#search').value);
-  for (const button of document.querySelectorAll('.card-button')) {
+  for (const button of qa('.card-button')) {
     const visible = !button.classList.contains('is-hidden');
     const match = Boolean(term) && visible && button.dataset.search.includes(term);
     button.classList.toggle('search-match', match);
@@ -456,15 +541,14 @@ function appendLinkedText(container, value) {
 }
 
 function renderDetails(person) {
-  q('#details-name').textContent = person.name;
+  q('#details-name').textContent = person.displayName || person.name;
   const fields = q('#details-fields');
   fields.replaceChildren();
-
   const sourceFields = Array.isArray(person.sourceFields) && person.sourceFields.length
     ? person.sourceFields
     : [
         { label: 'Given/Preferred Name', value: person.givenPreferredName },
-        { label: 'Nickname', value: person.nickname },
+        { label: 'Nickname', value: person.personalNickname || person.nickname },
         { label: person.marriedName ? 'Family/Maiden Name' : 'Family/Last Name', value: person.familyMaidenName },
         { label: 'Married Name', value: person.marriedName },
         { label: 'RAT Year', value: person.ratYearLabel },
@@ -479,40 +563,37 @@ function renderDetails(person) {
     label.className = 'detail-label';
     const normalizedLabel = normalizeSearch(field.label).replace(/[^a-z0-9]/g, '');
     const familyField = ['familymaidenname', 'familyname', 'maidenname', 'lastname', 'surname'].includes(normalizedLabel);
-    label.textContent = familyField && !String(person.marriedName || '').trim()
-      ? 'Family/Last Name'
-      : field.label;
+    const personalNickField = ['nickname', 'personalnickname'].includes(normalizedLabel);
+    label.textContent = personalNickField
+      ? 'Personal Nickname'
+      : (familyField && !String(person.marriedName || '').trim() ? 'Family/Last Name' : field.label);
     const value = document.createElement('div');
     value.className = 'detail-value';
-    appendLinkedText(value, field.value);
+    const marriedField = ['marriedname', 'marriedsurname', 'currentsurname', 'currentlastname'].includes(normalizedLabel);
+    if (marriedField && String(person.marriedName || '').trim()) {
+      label.textContent = 'Current/Married Name';
+      appendLinkedText(value, person.currentName || `${person.givenPreferredName || ''} ${person.marriedName || ''}`.trim());
+    } else {
+      appendLinkedText(value, field.value);
+    }
     row.append(label, value);
     fields.appendChild(row);
   }
 
   const relationships = q('#details-relationships');
   relationships.replaceChildren();
-
   const claims = person.relationshipClaims || {};
   const submittedVet = claims.vet || null;
   const submittedRats = Array.isArray(claims.rats) ? claims.rats : [];
-
   const fallbackClaim = (id, role) => {
     const related = state.people.get(id);
-    return {
-      role,
-      id,
-      name: related?.name || id,
-      reciprocated: true,
-      status: 'Reciprocated / legacy relationship',
-      tooltip: '',
-    };
+    return { role, id, name: related?.name || id, reciprocated: true, status: 'Reciprocated / legacy relationship', tooltip: '' };
   };
 
   const addClaimButton = (row, claim, { showStatus = true } = {}) => {
     const wrapper = document.createElement('span');
     wrapper.className = 'relationship-person-wrap';
     if (claim.reciprocated === false) wrapper.classList.add('is-unreciprocated');
-
     let control;
     if (claim.id && state.people.has(claim.id)) {
       control = document.createElement('button');
@@ -527,11 +608,9 @@ function renderDetails(person) {
     }
     if (claim.reciprocated === false) {
       control.classList.add('unreciprocated-person');
-      control.title = claim.tooltip || "This relationship has not been reciprocated in this user's profile submission.";
-      control.setAttribute('aria-label', `${control.textContent}. ${control.title}`);
+      control.title = claim.tooltip || 'This relationship has not been reciprocated on the other profile.';
     }
     wrapper.appendChild(control);
-
     if (showStatus && claim.reciprocated === false) {
       const badge = document.createElement('span');
       badge.className = 'relationship-status-badge';
@@ -547,25 +626,17 @@ function renderDetails(person) {
     const label = document.createElement('strong');
     label.textContent = labelText;
     row.appendChild(label);
-    if (!claimList.length) {
-      row.append(document.createTextNode(emptyText));
-    } else {
-      for (const claim of claimList) addClaimButton(row, claim);
-    }
+    if (!claimList.length) row.append(document.createTextNode(emptyText));
+    else for (const claim of claimList) addClaimButton(row, claim);
     relationships.appendChild(row);
   };
 
-  const vetClaims = submittedVet
-    ? [submittedVet]
-    : (person.parentId ? [fallbackClaim(person.parentId, 'VET')] : []);
-  const ratClaims = submittedRats.length
-    ? submittedRats
-    : (person.childrenIds || []).map(id => fallbackClaim(id, 'RAT'));
-
+  const vetClaims = submittedVet ? [submittedVet] : (person.parentId ? [fallbackClaim(person.parentId, 'VET')] : []);
+  const ratClaims = submittedRats.length ? submittedRats : (person.childrenIds || []).map((id) => fallbackClaim(id, 'RAT'));
   addRelationshipClaims('VET', vetClaims, 'None / root');
   addRelationshipClaims('RATs', ratClaims, 'None');
 
-  const unreciprocated = [...vetClaims, ...ratClaims].filter(claim => claim.reciprocated === false);
+  const unreciprocated = [...vetClaims, ...ratClaims].filter((claim) => claim.reciprocated === false);
   if (unreciprocated.length) {
     const pendingRow = document.createElement('div');
     pendingRow.className = 'relationship-row unreciprocated-list';
@@ -574,7 +645,7 @@ function renderDetails(person) {
     pendingRow.appendChild(pendingLabel);
     const help = document.createElement('p');
     help.className = 'relationship-help';
-    help.textContent = 'These connections were submitted on this profile but have not yet been reciprocated on the other profile.';
+    help.textContent = 'These connections are present on one profile but have not been confirmed on the other profile.';
     pendingRow.appendChild(help);
     for (const claim of unreciprocated) {
       const item = document.createElement('div');
@@ -599,9 +670,7 @@ function selectPerson(personId, { locate = false } = {}) {
   const person = state.people.get(personId);
   if (!person) return;
   state.selectedPersonId = personId;
-  for (const button of document.querySelectorAll('.card-button')) {
-    button.classList.toggle('is-selected', button.dataset.personId === personId);
-  }
+  for (const button of qa('.card-button')) button.classList.toggle('is-selected', button.dataset.personId === personId);
   renderDetails(person);
   if (locate) locatePerson(personId, { ensureVisible: false });
 }
@@ -618,7 +687,7 @@ function showAllTrees() {
   applyVisibility({ fit: true });
 }
 
-function boundsForPeople(ids) {
+function boundsForPeople(ids, { original = false } = {}) {
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
@@ -627,9 +696,10 @@ function boundsForPeople(ids) {
     const person = state.people.get(id);
     const card = person?.card;
     if (!card) continue;
-    minX = Math.min(minX, card.x);
+    const x = original ? card.x : displayXForPerson(person);
+    minX = Math.min(minX, x);
     minY = Math.min(minY, card.y);
-    maxX = Math.max(maxX, card.x + card.width);
+    maxX = Math.max(maxX, x + card.width);
     maxY = Math.max(maxY, card.y + card.height);
   }
   return Number.isFinite(minX) ? { minX, minY, maxX, maxY } : null;
@@ -638,62 +708,74 @@ function boundsForPeople(ids) {
 function fitVisible() {
   const bounds = boundsForPeople(state.visiblePeople);
   if (!bounds) return;
-  const padding = 90;
+  const padding = 45;
   const width = Math.max(1, bounds.maxX - bounds.minX + padding * 2);
   const height = Math.max(1, bounds.maxY - bounds.minY + padding * 2);
-  const availableWidth = Math.max(120, viewport.clientWidth - state.yearAxisWidth - 44);
-  const scale = Math.min(
-    1.45,
-    Math.max(.12, availableWidth / width),
-    Math.max(.12, (viewport.clientHeight - 30) / height),
-  );
-  setScale(scale);
-  viewport.scrollLeft = Math.max(0, state.contentOffsetX + bounds.minX * state.scale - state.yearAxisWidth - 24);
+  const availableWidth = Math.max(120, viewport.clientWidth - state.yearAxisWidth - 18);
+  const scale = Math.min(1.45, Math.max(.12, availableWidth / width), Math.max(.12, (viewport.clientHeight - 24) / height));
+  setScale(scale, { preserveFocus: false });
+  viewport.scrollLeft = Math.max(0, state.contentOffsetX + (bounds.minX - padding) * state.scale - state.yearAxisWidth);
   viewport.scrollTop = Math.max(0, (bounds.minY - padding) * state.scale);
   syncYearAxisScroll();
 }
 
 function locatePerson(personId, { ensureVisible = false } = {}) {
-  if (ensureVisible && !state.visiblePeople.has(personId)) {
-    focusTreeForPerson(personId);
-  }
-  const button = document.querySelector(`.card-button[data-person-id="${CSS.escape(personId)}"]`);
-  if (!button || button.classList.contains('is-hidden')) return;
-  button.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' });
+  if (ensureVisible && !state.visiblePeople.has(personId)) focusTreeForPerson(personId);
+  const person = state.people.get(personId);
+  if (!person || !state.visiblePeople.has(personId)) return;
+  const card = person.card;
+  const centerX = state.contentOffsetX + (displayXForPerson(person) + card.width / 2) * state.scale;
+  const centerY = (card.y + card.height / 2) * state.scale;
+  const visibleCenterX = state.yearAxisWidth + (viewport.clientWidth - state.yearAxisWidth) / 2;
+  viewport.scrollTo({
+    left: Math.max(0, centerX - visibleCenterX),
+    top: Math.max(0, centerY - viewport.clientHeight / 2),
+    behavior: 'smooth',
+  });
+}
+
+function bindInfoPanel() {
+  const open = q('#info-button');
+  const dialog = q('#info-dialog');
+  const close = q('#info-close');
+  if (!open || !dialog) return;
+  open.addEventListener('click', () => dialog.showModal());
+  close?.addEventListener('click', () => dialog.close());
+  dialog.addEventListener('click', (event) => {
+    if (event.target === dialog) dialog.close();
+  });
 }
 
 async function main() {
   try {
     const data = await window.YJMBSecureData.loadTreeData();
     state.data = data;
-    state.people = new Map(data.people.map(person => [person.id, person]));
+    state.people = new Map(data.people.map((person) => [person.id, person]));
+    state.displayWidth = data.width;
     buildTreeIndexes(data);
-
-    stage.style.width = `${data.width}px`;
     stage.style.height = `${data.height}px`;
     renderBands(data);
     renderConnectors(data);
     renderCards(data);
     renderSectionFilter();
-    renderLeadershipLegend();
-
     status.hidden = true;
     viewport.hidden = false;
-    setScale(1);
+    setScale(window.matchMedia('(max-width: 820px), (pointer: coarse) and (max-width: 950px)').matches ? 0.8 : 1, { preserveFocus: false });
     applyVisibility();
     requestAnimationFrame(syncYearAxisGeometry);
   } catch (error) {
     console.error(error);
     if (error?.code === 'AUTH_REQUIRED') { window.location.replace('index.html'); return; }
-    status.textContent = `Could not load the encrypted tree: ${error.message}. Run a local HTTP server instead of opening the HTML file directly.`;
+    status.textContent = `Could not load the encrypted tree: ${error.message}. Run a local HTTP server instead of opening this HTML file directly.`;
   }
 }
 
 q('#zoom-in').addEventListener('click', () => setScale(state.scale * 1.15));
 q('#zoom-out').addEventListener('click', () => setScale(state.scale / 1.15));
 q('#zoom-reset').addEventListener('click', () => setScale(1));
+q('#zoom-fit')?.addEventListener('click', fitVisible);
 viewport.addEventListener('scroll', syncYearAxisScroll, { passive: true });
-window.addEventListener('resize', syncYearAxisGeometry, { passive: true });
+window.addEventListener('resize', () => { syncYearAxisGeometry(); renderYearAxis(); }, { passive: true });
 q('#search').addEventListener('input', updateSearchResults);
 q('#search').addEventListener('keydown', (event) => {
   if (event.key === 'Enter') {
@@ -710,13 +792,15 @@ q('#search').addEventListener('focus', updateSearchResults);
 document.addEventListener('click', (event) => {
   if (!event.target.closest('.search-wrap')) q('#search-results').hidden = true;
 });
-q('#sections-all').addEventListener('click', () => setAllSections(true));
-q('#sections-none').addEventListener('click', () => setAllSections(false));
+q('#sections-all').addEventListener('click', () => setAllSectionCheckboxes(true));
+q('#sections-none').addEventListener('click', () => setAllSectionCheckboxes(false));
+q('#sections-apply').addEventListener('click', applySectionSelection);
+q('#sections-load-full').addEventListener('click', loadFullTree);
 q('#show-all-trees').addEventListener('click', showAllTrees);
 q('#details-close').addEventListener('click', () => {
   q('#details').hidden = true;
   state.selectedPersonId = null;
-  for (const button of document.querySelectorAll('.card-button')) button.classList.remove('is-selected');
+  for (const button of qa('.card-button')) button.classList.remove('is-selected');
 });
-
+bindInfoPanel();
 main();

@@ -8,8 +8,9 @@ existing structured leadership fields without deleting anything:
   * Informal Leadership Position(s)
 
 Exact/high-confidence phrases such as "drum major", "section leader",
-"RAT parent", and "hype man" are assignable. Generic words such as "leader",
-"leadership", or "captain" are reported for review rather than guessed.
+"guard captain", "RAT parent", and "hype man" are assignable. Generic words
+such as "leader", "leadership", or an unqualified "captain" are reported for
+review rather than guessed.
 """
 from __future__ import annotations
 
@@ -63,7 +64,7 @@ def note_columns(headers: dict[int, str], include_memory: bool) -> list[int]:
 
 
 def backup(path: Path) -> Path:
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     folder = path.parent / "backups" / "data_cleanup" / stamp
     folder.mkdir(parents=True, exist_ok=True)
     target = folder / path.name

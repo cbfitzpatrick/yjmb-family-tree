@@ -39,11 +39,11 @@ SECTION_DISPLAY = {
 # Intentionally conservative aliases. The cleanup script reports unmatched text
 # instead of guessing it into a section.
 SECTION_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
-    ("front ensemble", re.compile(r"\bfront\s+en(?:s|c)emble\b|\bfront\s+ensemble\b|\bpit\b", re.I)),
+    ("front ensemble", re.compile(r"\bfront\s+en(?:s|c)emble\b|\bfront\s+ensemble\b|\bpit\b|\bmarimbas?\b|\bvibraphones?\b|\bvibes?\b|\bxylophones?\b|\bglockenspiels?\b|\bbells?\b|\btimpani\b|\bkettledrums?\b|\brack\b|\baux(?:iliary)?\s+percussion\b|\bkeyboards?\b|\bsynth(?:esizer)?s?\b", re.I)),
     ("golden girl", re.compile(r"\bgolden\s+girls?\b", re.I)),
     ("goldrush", re.compile(r"\bgold\s*rush\b|\bgoldrush\b", re.I)),
-    ("guard", re.compile(r"\bcolor\s*guard\b|\bcolour\s*guard\b|\bcolorguard\b|\bguard\b", re.I)),
-    ("battery", re.compile(r"\bbattery\b|\bdrum\s*line\b|\bdrumline\b|\bsnares?\b|\b(?:marching\s+)?tenors?\b|\bquads?\b|\bquints?\b|\bbass\s+drums?\b|\bcymbals?\b", re.I)),
+    ("guard", re.compile(r"\bcolor\s*guard\b|\bcolour\s*guard\b|\bcolorguard\b|\bguard\b|\bflags?\b|\brifles?\b|\bsab(?:er|re)s?\b", re.I)),
+    ("battery", re.compile(r"\bbattery\b|\bdrum\s*line\b|\bdrumline\b|\bsnares?\b|\btenors\b|\btenor\s+drums?\b|\bquads?\b|\bquints?\b|\bbass\s+drums?\b|\bcymbals?\b", re.I)),
     ("sax/saxophone", re.compile(r"\b(?:(?:alto|tenor|baritone|bari|soprano)\s+)?sax(?:ophone)?s?\b", re.I)),
     ("flute/piccolo", re.compile(r"\bflutes?\b|\bpiccolos?\b", re.I)),
     ("clarinet", re.compile(r"\b(?:bass\s+)?clarinets?\b", re.I)),
@@ -52,6 +52,35 @@ SECTION_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("trombone", re.compile(r"\btrombones?\b|\bbones?\b", re.I)),
     ("baritone", re.compile(r"\bbaritones?\b|\beuphoniums?\b|\beuphs?\b", re.I)),
     ("sousaphone", re.compile(r"\bsousaphones?\b|\btubas?\b", re.I)),
+)
+
+# Meaningful subsection/instrument detail that should survive broad section
+# normalization.  The workbook's Instrument field remains human-readable while
+# the generator still colors cards by the canonical section keys above.
+SECTION_DETAIL_PATTERNS: tuple[tuple[str, str, re.Pattern[str]], ...] = (
+    ("flute/piccolo", "Flute", re.compile(r"\bflutes?\b", re.I)),
+    ("flute/piccolo", "Piccolo", re.compile(r"\bpiccolos?\b", re.I)),
+    ("clarinet", "Bass Clarinet", re.compile(r"\bbass\s+clarinets?\b", re.I)),
+    ("sax/saxophone", "Alto Saxophone", re.compile(r"\balto(?:\s+sax(?:ophone)?s?)?\b", re.I)),
+    ("sax/saxophone", "Tenor Saxophone", re.compile(r"\btenor(?:\s+sax(?:ophone)?s?)?\b", re.I)),
+    ("sax/saxophone", "Baritone Saxophone", re.compile(r"\b(?:baritone|bari)(?:\s+sax(?:ophone)?s?)?\b", re.I)),
+    ("sax/saxophone", "Soprano Saxophone", re.compile(r"\bsoprano(?:\s+sax(?:ophone)?s?)?\b", re.I)),
+    ("baritone", "Euphonium", re.compile(r"\beuphoniums?\b|\beuphs?\b", re.I)),
+    ("sousaphone", "Tuba", re.compile(r"\btubas?\b", re.I)),
+    ("battery", "Snare", re.compile(r"\bsnares?\b", re.I)),
+    ("battery", "Tenors/Quads", re.compile(r"\btenors\b|\btenor\s+drums?\b|\bquads?\b|\bquints?\b", re.I)),
+    ("battery", "Bass Drum", re.compile(r"\bbass\s+drums?\b", re.I)),
+    ("battery", "Cymbals", re.compile(r"\bcymbals?\b", re.I)),
+    ("guard", "Flag", re.compile(r"\bflags?\b", re.I)),
+    ("guard", "Rifle", re.compile(r"\brifles?\b", re.I)),
+    ("guard", "Saber", re.compile(r"\bsab(?:er|re)s?\b", re.I)),
+    ("front ensemble", "Marimba", re.compile(r"\bmarimbas?\b", re.I)),
+    ("front ensemble", "Vibraphone", re.compile(r"\bvibraphones?\b|\bvibes?\b", re.I)),
+    ("front ensemble", "Xylophone", re.compile(r"\bxylophones?\b", re.I)),
+    ("front ensemble", "Glockenspiel/Bells", re.compile(r"\bglockenspiels?\b|\bbells?\b", re.I)),
+    ("front ensemble", "Timpani", re.compile(r"\btimpani\b|\bkettledrums?\b", re.I)),
+    ("front ensemble", "Rack/Auxiliary Percussion", re.compile(r"\brack\b|\baux(?:iliary)?\s+percussion\b", re.I)),
+    ("front ensemble", "Keyboard/Synth", re.compile(r"\bkeyboards?\b|\bsynth(?:esizer)?s?\b", re.I)),
 )
 
 
@@ -71,30 +100,111 @@ def recognized_sections(text: object) -> list[str]:
 
 
 def canonical_section_text(text: object) -> str | None:
+    """Return broad canonical section labels only."""
     sections = recognized_sections(text)
     if not sections:
         return None
     return ", ".join(SECTION_DISPLAY[item] for item in sections)
 
 
+def section_details(text: object, canonical: str) -> list[str]:
+    """Return recognized subsection/instrument details in source order.
+
+    The exact canonical broad label is removed first so an already-normalized
+    value such as ``Flute/Piccolo — Piccolo`` does not accidentally interpret
+    the words inside ``Flute/Piccolo`` as two subsection answers.
+    """
+    raw = norm(text)
+    broad_label = SECTION_DISPLAY.get(canonical, "")
+    if broad_label:
+        # Remove the broad label only when it is an already-normalized prefix.
+        # Never remove a word merely because it appears inside a detail such as
+        # "Bass Clarinet".
+        normalized_prefix = re.compile(
+            rf"^\s*{re.escape(broad_label)}(?:\s*[—–:-]\s*|\s*$)",
+            re.I,
+        )
+        raw = normalized_prefix.sub(" ", raw, count=1)
+    matches: list[tuple[int, str]] = []
+    for section, label, pattern in SECTION_DETAIL_PATTERNS:
+        if section != canonical:
+            continue
+        for match in pattern.finditer(raw):
+            matches.append((match.start(), label))
+    matches.sort(key=lambda item: item[0])
+    return _dedupe(label for _, label in matches)
+
+
+def canonical_section_text_with_details(text: object) -> str | None:
+    """Canonicalize broad section names without throwing away known details.
+
+    Examples:
+      Alto Sax -> Sax/Saxophone — Alto Saxophone
+      Snare -> Battery — Snare
+      Color Guard / Rifle -> Guard — Rifle
+    """
+    sections = recognized_sections(text)
+    if not sections:
+        return None
+    parts: list[str] = []
+    for section in sections:
+        label = SECTION_DISPLAY[section]
+        details = section_details(text, section)
+        if details:
+            label += " — " + ", ".join(details)
+        parts.append(label)
+    return "; ".join(parts)
+
+
+def canonical_section_entry(section: object, detail: object = "") -> str | None:
+    """Format one broad section plus an optional specific answer.
+
+    Known detail wording is canonicalized; unknown detail is preserved verbatim
+    rather than discarded. This is used for new questionnaire submissions.
+    """
+    section_raw = norm(section)
+    canonical = section_raw.casefold() if section_raw.casefold() in SECTION_DISPLAY else None
+    if canonical is None:
+        recognized = recognized_sections(section_raw)
+        canonical = recognized[0] if len(recognized) == 1 else None
+    if canonical is None:
+        return None
+    broad = SECTION_DISPLAY[canonical]
+    detail_raw = norm(detail)
+    if not detail_raw:
+        return broad
+    details = section_details(detail_raw, canonical)
+    return f"{broad} — {', '.join(details) if details else detail_raw}"
+
+
+# Formal leadership vocabulary. Section Leader and Guard Captain remain formal
+# section leadership roles; the remaining roles are the full-band formal
+# positions supplied for v17. Aliases are normalized without changing the
+# original free-text source field unless a cleanup/apply path explicitly runs.
 FORMAL_ROLE_ORDER = (
     "Drum Major",
     "Section Leader",
-    "RAT Parent",
-    "Props",
-    "Operations",
-    "MCM",
+    "Guard Captain",
     "Staff Assistant",
+    "Operations",
+    "Props",
+    "Uniforms",
+    "Libraries",
+    "MCM",
+    "RAT Parent",
 )
 
 FORMAL_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("Drum Major", re.compile(r"\bdrum\s+majors?\b", re.I)),
     ("Section Leader", re.compile(r"\bsection\s+leaders?\b", re.I)),
-    ("RAT Parent", re.compile(r"\brat\s+parents?\b|\brat\s+(?:moms?|dads?)\b", re.I)),
-    ("Props", re.compile(r"\bprops?\b", re.I)),
+    ("Guard Captain", re.compile(r"\b(?:color\s+guard\s+)?guard\s+captains?\b|\bcolor\s+guard\s+captains?\b", re.I)),
+    ("Staff Assistant", re.compile(r"\bstaff\s+(?:assistants?|ass(?:\.|\b))", re.I)),
     ("Operations", re.compile(r"\boperations?\b|\bops\b", re.I)),
+    ("Props", re.compile(r"\bprops?\b", re.I)),
+    ("Uniforms", re.compile(r"\buniforms?\b", re.I)),
+    ("Libraries", re.compile(r"\blibraries?\b|\blibrary\b", re.I)),
     ("MCM", re.compile(r"\bmcm\b", re.I)),
-    ("Staff Assistant", re.compile(r"\bstaff\s+assistants?\b", re.I)),
+    ("RAT Parent", re.compile(r"\brat\s+parents?\b|\brat\s+(?:moms?|dads?)\b", re.I)),
 )
 
 INFORMAL_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
@@ -168,13 +278,15 @@ def leadership_icon_flags(formal_text: object, informal_text: object, informal_f
     flags: list[str] = []
     if "Section Leader" in formal:
         flags.append("section-leader")
+    if "Guard Captain" in formal:
+        flags.append("guard-captain")
     if "Drum Major" in formal:
         flags.append("drum-major")
     if "RAT Parent" in formal:
         flags.append("rat-parent")
     if informal_roles_from_text(informal_text) or truthy(informal_flag):
         flags.append("informal-leadership")
-    if any(role not in {"Section Leader", "Drum Major", "RAT Parent"} for role in formal):
+    if any(role not in {"Section Leader", "Guard Captain", "Drum Major", "RAT Parent"} for role in formal):
         flags.append("other-leadership")
     return flags
 
@@ -207,7 +319,9 @@ def section_residual_words(text: object) -> list[str]:
     residual = norm(text)
     for _, pattern in SECTION_PATTERNS:
         residual = pattern.sub(" ", residual)
-    residual = re.sub(r"[,&;/|+()\[\]{}:_-]+", " ", residual)
+    for _, __, pattern in SECTION_DETAIL_PATTERNS:
+        residual = pattern.sub(" ", residual)
+    residual = re.sub(r"[,&;/|+()\[\]{}:_—–-]+", " ", residual)
     words = [w.casefold() for w in re.findall(r"[A-Za-z0-9']+", residual)]
     return [w for w in words if w not in SECTION_RESIDUAL_STOPWORDS]
 
@@ -220,8 +334,11 @@ def formal_roles_in_text(text: object) -> list[str]:
 
 def strip_formal_role_phrases(text: object) -> str:
     raw = norm(text)
-    for _, pattern in FORMAL_PATTERNS:
-        raw = pattern.sub(" ", raw)
+    for role, pattern in FORMAL_PATTERNS:
+        # "Guard Captain" can itself contain the section name (for example,
+        # "Color Guard Captain"). Preserve Guard as section data while removing
+        # the leadership title.
+        raw = pattern.sub(" Guard " if role == "Guard Captain" else " ", raw)
     raw = re.sub(r"\s*(?:,|;|/|\||\band\b)\s*(?=(?:,|;|/|\||$))", " ", raw, flags=re.I)
     raw = re.sub(r"^(?:\s*(?:,|;|/|\||and)\s*)+|(?:\s*(?:,|;|/|\||and)\s*)+$", "", raw, flags=re.I)
     return norm(raw)

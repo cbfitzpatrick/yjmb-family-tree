@@ -151,7 +151,7 @@ function primarySection() {
   return row ? q('.membership-section', row).value : '';
 }
 
-function sectionNeedsSpecificInstrument(section) {
+function sectionRequiresSpecificInstrument(section) {
   return section === 'front ensemble' || section === 'battery';
 }
 
@@ -160,15 +160,32 @@ function updateSectionMembershipRow(row) {
   const instrumentWrap = q('.specific-instrument-wrap', row);
   const instrumentInput = q('.specific-instrument', row);
   const label = q('.specific-instrument-label', row);
-  const needsInstrument = sectionNeedsSpecificInstrument(section);
-  instrumentWrap.hidden = !needsInstrument;
-  instrumentInput.required = needsInstrument;
+  const requiresInstrument = sectionRequiresSpecificInstrument(section);
+  // v16 preserves subsection detail for every section instead of throwing it
+  // away during broad section categorization. The field is optional except in
+  // the two sections where v15 already required a specific instrument.
+  instrumentWrap.hidden = !section;
+  instrumentInput.required = requiresInstrument;
+  label.textContent = 'Specific instrument / subsection (optional)';
+  instrumentInput.placeholder = 'Optional detail';
   if (section === 'front ensemble') {
     label.textContent = 'What instrument did you play in Front Ensemble/Pit?';
     instrumentInput.placeholder = 'e.g., marimba, vibraphone, synth, rack percussion';
   } else if (section === 'battery') {
     label.textContent = 'What instrument did you play in Battery/Drumline?';
     instrumentInput.placeholder = 'e.g., snare, tenors/quads, bass drum, cymbals';
+  } else if (section === 'sax/saxophone') {
+    label.textContent = 'Which saxophone/subsection? (optional)';
+    instrumentInput.placeholder = 'e.g., alto, tenor, bari, soprano';
+  } else if (section === 'guard') {
+    label.textContent = 'Which guard equipment/subsection? (optional)';
+    instrumentInput.placeholder = 'e.g., flag, rifle, saber';
+  } else if (section === 'flute/piccolo') {
+    label.textContent = 'Which instrument? (optional)';
+    instrumentInput.placeholder = 'e.g., flute, piccolo';
+  } else if (section === 'clarinet') {
+    label.textContent = 'Which clarinet? (optional)';
+    instrumentInput.placeholder = 'e.g., clarinet, bass clarinet';
   }
 
   const key = row.dataset.sectionKey;
@@ -282,53 +299,176 @@ function readSectionMemberships() {
       key,
       section,
       sectionNickname: hasSectionNickname ? q('.section-nickname', row).value.trim() : '',
-      specificInstrument: sectionNeedsSpecificInstrument(section) ? q('.specific-instrument', row).value.trim() : '',
+      specificInstrument: section ? q('.specific-instrument', row).value.trim() : '',
     };
   });
 }
 
 function treeCardGivenName() {
+  const given = q('#self-given').value.trim();
   const nickname = q('#self-nickname').value.trim();
-  return radioValue('has-nickname') === 'yes' && radioValue('tree-name-preference') === 'nickname' && nickname
-    ? nickname
-    : q('#self-given').value.trim();
+  if (radioValue('has-nickname') !== 'yes' || !nickname) return given;
+  const preference = radioValue('tree-name-preference') || 'given';
+  if (preference === 'nickname') return `"${nickname}"`;
+  if (preference === 'both') return `${given} "${nickname}"`.trim();
+  return given;
 }
 
 function treeCardName() {
   return [treeCardGivenName(), q('#self-family').value.trim()].filter(Boolean).join(' ');
 }
 
-function selectedLeadershipRoles() {
-  return qa('input[name="leadership-role"]:checked').map((input) => input.value);
-}
+const FORMAL_LEADERSHIP_OPTIONS = [
+  'Drum Major',
+  'Section Leader',
+  'Guard Captain',
+  'Staff Assistant',
+  'Operations',
+  'Props',
+  'Uniforms',
+  'Libraries',
+  'MCM',
+  'RAT Parent',
+  'Other',
+];
+const FORMAL_LEADERSHIP_LABELS = {
+  'Staff Assistant': 'Staff Assistant (Staff Ass)',
+  'Operations': 'Operations (Ops)',
+  'RAT Parent': 'RAT Parent (RAT Mom / RAT Dad)',
+};
 
-function leadershipIconKinds(formalRoles, hasInformal) {
-  const roles = new Set(formalRoles || []);
-  const kinds = [];
-  if (roles.has('Section Leader')) kinds.push('section-leader');
-  if (roles.has('Drum Major')) kinds.push('drum-major');
-  if (roles.has('RAT Parent')) kinds.push('rat-parent');
-  if (hasInformal) kinds.push('informal-leadership');
-  if ([...roles].some((role) => !['Section Leader', 'Drum Major', 'RAT Parent'].includes(role))) kinds.push('other-leadership');
-  return kinds;
-}
+function addLeadershipEntry(initial = {}) {
+  const container = q('#leadership-entries');
+  const row = document.createElement('div');
+  row.className = 'leadership-entry-row';
 
-function previewLeadershipIconSvg(kind) {
-  const attrs = 'viewBox="0 0 18 18" aria-hidden="true"';
-  if (kind === 'section-leader') return `<svg ${attrs}><path d="M2 4.5 9 1.5l7 3M2 9 9 6l7 3M2 13.5l7-3 7 3" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>`;
-  if (kind === 'drum-major') return `<svg ${attrs}><path d="M4 15 14.5 3.5M2 6l4-3M2 10l5-3" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="15" cy="3" r="2" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>`;
-  if (kind === 'rat-parent') return `<svg ${attrs}><circle cx="9" cy="3.5" r="2" fill="currentColor"/><circle cx="4" cy="14" r="2" fill="currentColor"/><circle cx="14" cy="14" r="2" fill="currentColor"/><path d="M9 5.5v4M4 9.5h10M4 9.5V12M14 9.5V12" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>`;
-  if (kind === 'informal-leadership') return `<svg ${attrs}><path d="M2 8.5 10 4v9L2 9.5Zm8-.8h2.5v1.8H10M5 10l2 5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M14 5.5 17 4M14 9h3.5M14 12.5l3 1.5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>`;
-  return `<svg ${attrs}><path d="m9 1.5 2.1 4.4 4.9.7-3.5 3.4.8 4.9L9 12.6l-4.3 2.3.8-4.9L2 6.6l4.9-.7Z" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>`;
-}
+  const typeField = document.createElement('label');
+  typeField.className = 'form-field';
+  typeField.innerHTML = '<span>Type</span>';
+  const type = document.createElement('select');
+  type.className = 'leadership-type';
+  type.innerHTML = '<option value="formal">Formal</option><option value="informal">Informal</option>';
+  type.value = initial.type || 'formal';
+  typeField.appendChild(type);
 
-function appendPreviewLeadershipIcons(card, kinds) {
-  for (const kind of kinds || []) {
-    const icon = document.createElement('span');
-    icon.className = `preview-leadership-icon leadership-${kind}`;
-    icon.innerHTML = previewLeadershipIconSvg(kind);
-    card.appendChild(icon);
+  const roleField = document.createElement('label');
+  roleField.className = 'form-field leadership-role-field';
+  const roleLabel = document.createElement('span');
+  roleLabel.textContent = 'Position';
+  const formal = document.createElement('select');
+  formal.className = 'leadership-formal-role';
+  for (const role of FORMAL_LEADERSHIP_OPTIONS) {
+    const option = document.createElement('option');
+    option.value = role;
+    option.textContent = FORMAL_LEADERSHIP_LABELS[role] || role;
+    formal.appendChild(option);
   }
+  formal.value = FORMAL_LEADERSHIP_OPTIONS.includes(initial.role) ? initial.role : (initial.type === 'formal' && initial.role ? 'Other' : 'Drum Major');
+  const freeText = document.createElement('input');
+  freeText.className = 'leadership-free-role';
+  freeText.type = 'text';
+  freeText.placeholder = 'Position';
+  freeText.value = initial.type === 'informal' || formal.value === 'Other' ? (initial.role || '') : '';
+  roleField.append(roleLabel, formal, freeText);
+
+  const yearsField = document.createElement('label');
+  yearsField.className = 'form-field';
+  yearsField.innerHTML = '<span>Year(s) (optional)</span>';
+  const years = document.createElement('input');
+  years.className = 'leadership-years';
+  years.type = 'text';
+  years.placeholder = 'e.g., 2021 or 2021–2022';
+  years.value = initial.years || '';
+  yearsField.appendChild(years);
+
+  const remove = document.createElement('button');
+  remove.type = 'button';
+  remove.className = 'remove-row-button';
+  remove.setAttribute('aria-label', 'Remove this leadership position');
+  remove.textContent = '×';
+  remove.addEventListener('click', () => row.remove());
+
+  function refresh() {
+    const informal = type.value === 'informal';
+    formal.hidden = informal;
+    freeText.hidden = !informal && formal.value !== 'Other';
+    roleLabel.textContent = informal ? 'Informal position' : 'Formal position';
+    freeText.placeholder = informal ? 'e.g., Hype Man, mentor, unofficial coordinator' : 'Other formal position';
+  }
+  type.addEventListener('change', refresh);
+  formal.addEventListener('change', refresh);
+  refresh();
+
+  row.append(typeField, roleField, yearsField, remove);
+  container.appendChild(row);
+}
+
+function readLeadershipHistory() {
+  return qa('.leadership-entry-row', q('#leadership-entries')).map((row) => {
+    const type = q('.leadership-type', row).value;
+    const formal = q('.leadership-formal-role', row).value;
+    const free = q('.leadership-free-role', row).value.trim();
+    const role = type === 'informal' ? free : (formal === 'Other' ? free : formal);
+    return { type, role, years: q('.leadership-years', row).value.trim() };
+  }).filter((entry) => entry.role);
+}
+
+function selectedLeadershipRoles() {
+  return [...new Set(readLeadershipHistory().filter((entry) => entry.type === 'formal').map((entry) => entry.role))];
+}
+
+function informalLeadershipEntries() {
+  return readLeadershipHistory().filter((entry) => entry.type === 'informal');
+}
+
+function updateBandClubLeadershipVisibility() {
+  const yes = radioValue('band-club-leadership') === 'yes';
+  q('#band-club-leadership-details').hidden = !yes;
+  if (yes && !q('#band-club-leadership-entries').children.length) addBandClubLeadershipEntry();
+  if (!yes) q('#band-club-leadership-entries').replaceChildren();
+}
+
+function addBandClubLeadershipEntry(initial = {}) {
+  const container = q('#band-club-leadership-entries');
+  const row = document.createElement('div');
+  row.className = 'band-club-entry-row';
+
+  const positionField = document.createElement('label');
+  positionField.className = 'form-field';
+  positionField.innerHTML = '<span>Band Club position</span>';
+  const position = document.createElement('input');
+  position.className = 'band-club-position';
+  position.type = 'text';
+  position.placeholder = 'e.g., President, Treasurer, Social Chair';
+  position.value = initial.position || '';
+  positionField.appendChild(position);
+
+  const yearsField = document.createElement('label');
+  yearsField.className = 'form-field';
+  yearsField.innerHTML = '<span>Year(s) (optional)</span>';
+  const years = document.createElement('input');
+  years.className = 'band-club-years';
+  years.type = 'text';
+  years.placeholder = 'e.g., 2022–2023';
+  years.value = initial.years || '';
+  yearsField.appendChild(years);
+
+  const remove = document.createElement('button');
+  remove.type = 'button';
+  remove.className = 'remove-row-button';
+  remove.setAttribute('aria-label', 'Remove this Band Club position');
+  remove.textContent = '×';
+  remove.addEventListener('click', () => row.remove());
+  row.append(positionField, yearsField, remove);
+  container.appendChild(row);
+}
+
+function readBandClubLeadershipHistory() {
+  if (radioValue('band-club-leadership') !== 'yes') return [];
+  return qa('.band-club-entry-row', q('#band-club-leadership-entries')).map((row) => ({
+    position: q('.band-club-position', row).value.trim(),
+    years: q('.band-club-years', row).value.trim(),
+  })).filter((entry) => entry.position);
 }
 
 function updateOtherGtEnsembleVisibility() {
@@ -350,13 +490,6 @@ function updateDifferentGtInstrumentVisibility() {
   q('#other-gt-instruments-wrap').hidden = !differentInstrument;
   q('#other-gt-instruments').required = differentInstrument;
   if (!differentInstrument) q('#other-gt-instruments').value = '';
-}
-
-function updateInformalLeadershipVisibility() {
-  const informal = radioValue('informal-leadership') === 'yes';
-  q('#informal-leadership-wrap').hidden = !informal;
-  q('#informal-leadership-description').required = informal;
-  if (!informal) q('#informal-leadership-description').value = '';
 }
 
 function setStep(step, { scroll = true } = {}) {
@@ -742,7 +875,7 @@ function validateStep1() {
       return false;
     }
     if (!radioValue('tree-name-preference')) {
-      showStatus('Choose whether your tree card should use your First/Preferred Name or your Nickname.');
+      showStatus('Choose whether your tree card should use your First/Preferred Name, your Personal Nickname, or both.');
       return false;
     }
   }
@@ -813,7 +946,7 @@ function validateStep2() {
       showStatus(`Enter your section nickname for ${sectionLabel(membership.section)}.`);
       return false;
     }
-    if (sectionNeedsSpecificInstrument(membership.section) && !membership.specificInstrument) {
+    if (sectionRequiresSpecificInstrument(membership.section) && !membership.specificInstrument) {
       showStatus(`Specify the instrument you played in ${sectionLabel(membership.section)}.`);
       return false;
     }
@@ -836,12 +969,18 @@ function validateStep2() {
       return false;
     }
   }
-  if (!radioValue('informal-leadership')) {
-    showStatus('Please answer whether you have served in any informal leadership positions in marching band.');
+  for (const [index, entry] of readLeadershipHistory().entries()) {
+    if (!entry.role) {
+      showStatus(`Leadership row ${index + 1} needs a position, or remove that row.`);
+      return false;
+    }
+  }
+  if (!radioValue('band-club-leadership')) {
+    showStatus('Please answer whether you have held a Band Club leadership position.');
     return false;
   }
-  if (radioValue('informal-leadership') === 'yes' && !q('#informal-leadership-description').value.trim()) {
-    showStatus('Describe the informal leadership position or responsibilities you served in.');
+  if (radioValue('band-club-leadership') === 'yes' && !readBandClubLeadershipHistory().length) {
+    showStatus('Add at least one Band Club leadership position, or choose No.');
     return false;
   }
   if (year < 1990 && !radioValue('legacy-system')) {
@@ -888,7 +1027,7 @@ function proposedSubmission() {
     if (checkbox.checked && textarea.value.trim()) notes[target.dataset.targetKey] = textarea.value.trim();
   }
   return {
-    version: 3,
+    version: 4,
     submittedAt: new Date().toISOString(),
     self: {
       givenPreferredName: q('#self-given').value.trim(),
@@ -908,8 +1047,11 @@ function proposedSubmission() {
       playedDifferentGtInstrument: radioValue('other-gt-ensembles') === 'yes' && radioValue('different-gt-instrument') === 'yes',
       otherGtInstruments: radioValue('other-gt-ensembles') === 'yes' && radioValue('different-gt-instrument') === 'yes' ? q('#other-gt-instruments').value.trim() : '',
       marchingBandLeadershipRoles: selectedLeadershipRoles(),
-      informalLeadership: radioValue('informal-leadership') === 'yes',
-      informalLeadershipDescription: radioValue('informal-leadership') === 'yes' ? q('#informal-leadership-description').value.trim() : '',
+      leadershipHistory: readLeadershipHistory(),
+      informalLeadership: informalLeadershipEntries().length > 0,
+      informalLeadershipDescription: informalLeadershipEntries().map((entry) => `${entry.role}${entry.years ? ` (${entry.years})` : ''}`).join('; '),
+      bandClubLeadership: radioValue('band-club-leadership') === 'yes',
+      bandClubLeadershipHistory: readBandClubLeadershipHistory(),
     },
     pairSystem: {
       applies: usePairSystem,
@@ -978,9 +1120,9 @@ function canonicalNodeFromPerson(person) {
     sections: person.instruments || ['unknown'],
     parentId: person.parentId || null,
     existing: true,
-    image: person.card?.image || null,
     sourcePerson: person,
-    leadershipIcons: person.leadershipIcons || [],
+    currentlyRat: Boolean(person.currentlyRat),
+    bandClubLeadership: Boolean(person.bandClubLeadership),
   };
 }
 
@@ -1017,7 +1159,8 @@ function proposedGraph() {
     parentId: null,
     existing: false,
     role: 'self',
-    leadershipIcons: leadershipIconKinds(submission.self.marchingBandLeadershipRoles, submission.self.informalLeadership),
+    currentlyRat: Boolean(submission.self.currentlyRat),
+    bandClubLeadership: Boolean(submission.self.bandClubLeadership),
   };
   nodes.set(selfId, selfNode);
 
@@ -1157,15 +1300,17 @@ function sectionGradient(sections) {
 }
 
 function line(svg, x1, y1, x2, y2, width = 6) {
-  const el = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-  el.setAttribute('x1', x1);
-  el.setAttribute('y1', y1);
-  el.setAttribute('x2', x2);
-  el.setAttribute('y2', y2);
-  el.setAttribute('stroke', state.data.connectorColor || '#777777');
-  el.setAttribute('stroke-width', width);
-  el.setAttribute('stroke-linecap', 'square');
-  svg.appendChild(el);
+  for (const [color, strokeWidth] of [['#FFFFFF', width + 4], ['#000000', width]]) {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    el.setAttribute('x1', x1);
+    el.setAttribute('y1', y1);
+    el.setAttribute('x2', x2);
+    el.setAttribute('y2', y2);
+    el.setAttribute('stroke', color);
+    el.setAttribute('stroke-width', strokeWidth);
+    el.setAttribute('stroke-linecap', 'square');
+    svg.appendChild(el);
+  }
 }
 
 function renderPreview() {
@@ -1229,18 +1374,23 @@ function renderPreview() {
     card.style.top = `${layout.y.get(node.id)}px`;
     card.style.width = `${layout.CARD_W}px`;
     card.style.height = `${layout.CARD_H}px`;
-    if (node.existing && node.image) {
-      const image = document.createElement('img');
-      image.src = node.image;
-      image.alt = node.name;
-      card.appendChild(image);
-    } else {
-      card.style.background = sectionGradient(node.sections);
-      const name = document.createElement('span');
-      name.textContent = node.name;
-      card.appendChild(name);
+    card.style.background = sectionGradient(node.sections);
+    const name = document.createElement('span');
+    name.textContent = node.sourcePerson?.displayName || node.name;
+    card.appendChild(name);
+    if (node.currentlyRat) {
+      const icon = document.createElement('img');
+      icon.src = 'rat-cap-icon.png';
+      icon.alt = '';
+      icon.className = 'card-status-icon rat-cap-icon';
+      card.appendChild(icon);
     }
-    appendPreviewLeadershipIcons(card, node.leadershipIcons || []);
+    if (node.bandClubLeadership) {
+      const icon = document.createElement('span');
+      icon.className = 'card-status-icon band-club-icon';
+      icon.innerHTML = '<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8.1" fill="rgba(255,255,255,.88)" stroke="currentColor" stroke-width="1.4"/><path d="M11.4 5.1v7.1c-.8-.5-2.2-.4-3 .2-.9.7-1 1.8-.2 2.4.8.7 2.2.5 3.1-.2.6-.5.8-1.1.7-1.7V8.1l4-1V5.4Z" fill="currentColor"/></svg>';
+      card.appendChild(icon);
+    }
     stage.appendChild(card);
   }
 
@@ -1303,8 +1453,8 @@ function renderSubmissionSummary() {
     }).join('; ')),
     summaryRow('Other GT ensembles', data.self.otherGtEnsembles ? data.self.otherGtEnsemblesList : 'No'),
     summaryRow('Different instrument in other GT ensembles', data.self.otherGtEnsembles ? (data.self.playedDifferentGtInstrument ? `Yes — ${data.self.otherGtInstruments}` : 'No') : 'Not applicable'),
-    summaryRow('Marching band leadership roles', data.self.marchingBandLeadershipRoles.length ? data.self.marchingBandLeadershipRoles.join(', ') : 'None reported'),
-    summaryRow('Informal leadership', data.self.informalLeadership ? `Yes — ${data.self.informalLeadershipDescription}` : 'No'),
+    summaryRow('Marching band leadership', data.self.leadershipHistory.length ? data.self.leadershipHistory.map((entry) => `${entry.type === 'formal' ? 'Formal' : 'Informal'}: ${entry.role}${entry.years ? ` (${entry.years})` : ''}`).join('; ') : 'None reported'),
+    summaryRow('Band Club leadership', data.self.bandClubLeadership ? data.self.bandClubLeadershipHistory.map((entry) => `${entry.position}${entry.years ? ` (${entry.years})` : ''}`).join('; ') : 'No'),
     summaryRow('Currently a RAT', data.self.currentlyRat ? 'Yes' : 'No'),
     summaryRow('RAT/VET system', data.pairSystem.applies ? 'Yes' : 'No / not applicable'),
     summaryRow('VET', vet),
@@ -1313,7 +1463,7 @@ function renderSubmissionSummary() {
     summaryRow('Favorite Tech Band Memory', data.favoriteTechBandMemory || 'No memory entered'),
   ].join('');
 
-  q('#submission-github-note').innerHTML = 'Your authenticated submission is checked for automated-abuse indicators. <strong>Low-risk additions enter the automatic encrypted update queue.</strong> Suspicious, conflicting, or unusually frequent submissions are diverted to administrator review instead of being applied automatically.';
+  q('#submission-github-note').innerHTML = 'Your authenticated submission is placed in the protected update queue after required-field and abuse checks. <strong>Normal member updates do not wait for administrator approval in v17.</strong> Every applied change is recorded in the protected admin changelog so it can be reviewed and reverted if needed.';
 }
 
 function renderTurnstile() {
@@ -1343,7 +1493,7 @@ function buildIssueBody(payload) {
     '',
     `**Person:** ${selfName}`,
     `**Nickname:** ${payload.self.nickname || 'None'}`,
-    `**Tree card name preference:** ${payload.self.treeNamePreference === 'nickname' ? 'Nickname' : 'First/Preferred Name'}`,
+    `**Tree card name preference:** ${payload.self.treeNamePreference}`,
     `**RAT year:** ${payload.self.ratYear}`,
     `**Sections:** ${payload.self.sections.map((entry) => {
       const extras = [];
@@ -1358,7 +1508,7 @@ function buildIssueBody(payload) {
     `**Currently a RAT:** ${payload.self.currentlyRat ? 'Yes' : 'No'}`,
     `**RAT/VET system applies:** ${payload.pairSystem.applies ? 'Yes' : 'No'}`,
     '',
-    '> **Admin review rule:** Naming a VET or RAT is a relationship claim, not permission to change that person’s profile. The automatic first-stage update adds only the submitter. These relationships and any notes for other people remain pending until a repository admin confirms them.',
+    '> Naming a VET or RAT records the submitter’s relationship claim. It does not silently rewrite the other person’s profile; unreciprocated claims are surfaced in Admin mode for validation.',
   ];
   if (payload.self.marriedName) lines.push(`**Married name:** ${payload.self.marriedName}`);
   if (payload.vet) lines.push(`**VET:** ${payload.vet.name} (${payload.vet.year}, ${sectionLabel(payload.vet.section)})`);
@@ -1401,11 +1551,11 @@ async function submitRequest() {
       body: JSON.stringify({ payload, turnstileToken: state.turnstileToken || '' }),
     });
     if (result.status === 'auto') {
-      showStatus('Submission accepted for automatic encrypted update. It will be applied by the protected GitHub workflow unless the workbook detects a relationship conflict.', 'info');
+      showStatus('Submission accepted for the automatic protected update workflow. Every applied change is logged for administrator review/revert.', 'info');
       button.textContent = 'Accepted';
     } else {
-      showStatus('Submission was safely diverted to administrator review. No automatic tree change was applied.', 'info');
-      button.textContent = 'Sent for review';
+      showStatus('The protected updater found a structural conflict and held this submission for administrator review.', 'info');
+      button.textContent = 'Held for review';
     }
     button.disabled = true;
   } catch (error) {
@@ -1436,11 +1586,13 @@ function bindEvents() {
   qa('input[name="multiple-sections"]').forEach((input) => input.addEventListener('change', updateMultipleSectionsVisibility));
   qa('input[name="other-gt-ensembles"]').forEach((input) => input.addEventListener('change', updateOtherGtEnsembleVisibility));
   qa('input[name="different-gt-instrument"]').forEach((input) => input.addEventListener('change', updateDifferentGtInstrumentVisibility));
-  qa('input[name="informal-leadership"]').forEach((input) => input.addEventListener('change', updateInformalLeadershipVisibility));
   qa('input[name="currently-rat"]').forEach((input) => input.addEventListener('change', updateRelationshipVisibility));
   qa('input[name="legacy-system"]').forEach((input) => input.addEventListener('change', updateRelationshipVisibility));
   q('#self-rat-year').addEventListener('change', updateRelationshipVisibility);
   q('#add-section').addEventListener('click', () => addSectionMembership());
+  q('#add-leadership').addEventListener('click', () => addLeadershipEntry());
+  qa('input[name="band-club-leadership"]').forEach((input) => input.addEventListener('change', updateBandClubLeadershipVisibility));
+  q('#add-band-club-leadership').addEventListener('click', () => addBandClubLeadershipEntry());
   q('#self-given').addEventListener('input', updateExistingSelfWarning);
   q('#self-family').addEventListener('input', updateExistingSelfWarning);
 
@@ -1481,7 +1633,7 @@ async function main() {
     changedLastNameUpdated();
     updateNicknameVisibility();
     updateOtherGtEnsembleVisibility();
-    updateInformalLeadershipVisibility();
+    updateBandClubLeadershipVisibility();
     refreshSectionMemberships();
     updateRelationshipVisibility();
     setStep(1, { scroll: false });

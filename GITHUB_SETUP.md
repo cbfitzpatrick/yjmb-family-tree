@@ -515,7 +515,7 @@ After authentication:
 4. Complete Turnstile if enabled.
 5. Submit.
 
-For a low-risk submission, the Worker returns it to the automatic encrypted queue. It writes only ciphertext to:
+For any well-formed authenticated member submission that passes the hard validation/abuse checks, the Worker sends it to the automatic encrypted queue. Risk scoring is retained as audit metadata rather than an administrator-approval gate in v17. It writes only ciphertext to:
 
 ```text
 .secure_submissions/auto/<UUID>.enc.json
@@ -526,7 +526,7 @@ The `Apply protected YJMB submissions` workflow then:
 - decrypts `secure/master_workbook.enc` inside the Actions runner;
 - decrypts the submission;
 - performs workbook conflict checks;
-- adds the new submitter and safe reciprocal relationships;
+- applies the member update while recording VET/RAT claims only on the submitting profile;
 - regenerates the encrypted public tree;
 - re-encrypts the master workbook;
 - removes plaintext runner files;
@@ -539,27 +539,15 @@ The Pages workflow deploys the updated `docs/` after that protected commit.
 
 ## 18. What happens when abuse/conflict is detected
 
-The Worker uses an administrator-review threshold. Default score threshold: `3`.
+v17 does not hold ordinary member updates merely because an audit risk score is high. Invalid access sessions, failed Turnstile checks (when enabled), malformed required fields, executable markup, or other hard validation failures are rejected.
 
-Examples that increase the review score:
-
-- high submission frequency;
-- repeated same name/year submission;
-- unusual payload size;
-- unusually large RAT/section/note lists;
-- executable-markup or external-URL-like content.
-
-Invalid access sessions, invalid Turnstile validations, or malformed required fields are rejected rather than forwarded as admin spam.
-
-A suspicious-but-well-formed submission is encrypted and stored at:
+The protected GitHub Actions updater performs the workbook-aware safety check. If applying an update would overwrite a structurally conflicting/stale record, create a duplicate person, exceed available relationship columns, or otherwise cannot be completed safely, the encrypted request is moved to:
 
 ```text
 .secure_submissions/review/<UUID>.enc.json
 ```
 
-The Worker creates a GitHub Issue assigned to `cbfitzpatrick`. The Issue contains only the protected UUID/path and routing reasons—not the submitted profile data.
-
-The GitHub Actions updater can also divert an initially low-risk submission to review if it discovers a duplicate or relationship conflict against the real workbook.
+The conflict Issue contains only the protected UUID/path and reason—not submitted profile data. Admin Mode can inspect the encrypted request with the separate developer authorization, approve/retry it, or deny it. Applied updates appear in the encrypted changelog and can be safely reverted.
 
 ---
 
