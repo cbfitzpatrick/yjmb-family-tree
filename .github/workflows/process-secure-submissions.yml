@@ -10,6 +10,8 @@ on:
 permissions:
   contents: write
   issues: write
+  pages: write
+  id-token: write
 
 concurrency:
   group: secure-yjmb-submission-updates
@@ -18,6 +20,8 @@ concurrency:
 jobs:
   apply:
     runs-on: ubuntu-latest
+    outputs:
+      has_applied: ${{ steps.result.outputs.has_applied }}
     steps:
       - name: Checkout latest main
         uses: actions/checkout@v6
@@ -51,13 +55,29 @@ jobs:
         env:
           SUBMISSION_KEY_B64: ${{ secrets.SUBMISSION_KEY_B64 }}
         run: python process_secure_queue.py --workbook "YJMB Trees.xlsx"
-      - name: Rebuild encrypted public site
+      - name: Inspect queue result
+        id: result
         if: steps.queue.outputs.has_files == 'true'
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          result = json.loads(Path("queue_result.json").read_text(encoding="utf-8"))
+          has_applied = "true" if result.get("applied") else "false"
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
+              handle.write(f"has_applied={has_applied}\n")
+          print(f"Applied updates present: {has_applied}")
+          PY
+      - name: Rebuild encrypted public site
+        if: steps.result.outputs.has_applied == 'true'
         env:
           TREE_DATA_KEY_B64: ${{ secrets.TREE_DATA_KEY_B64 }}
         run: python fullBandTreeGenerator.py --workbook "YJMB Trees.xlsx" --output-mode giant --skip-png --skip-svg --no-save-cards --skip-ambiguities
       - name: Re-encrypt protected master workbook
-        if: steps.queue.outputs.has_files == 'true'
+        if: steps.result.outputs.has_applied == 'true'
         env:
           MASTER_WORKBOOK_KEY_B64: ${{ secrets.MASTER_WORKBOOK_KEY_B64 }}
         run: python secure_workbook.py encrypt --input "YJMB Trees.xlsx" --output secure/master_workbook.enc
@@ -82,3 +102,25 @@ jobs:
       - name: Remove queue result
         if: always()
         run: rm -f queue_result.json
+
+  deploy:
+    needs: apply
+    if: needs.apply.outputs.has_applied == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout updated main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: docs
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
