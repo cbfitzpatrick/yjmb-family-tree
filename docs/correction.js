@@ -68,7 +68,7 @@ function renderFields() {
 
 function changesFromForm() {
   const changes = [];
-  for (const input of q('#correction-fields').querySelectorAll('input, textarea')) {
+  for (const input of q('#correction-fields').querySelectorAll('input, textarea, select')) {
     const label = input.dataset.fieldLabel;
     const before = originalValues.get(label) ?? '';
     const after = input.value.trim();
