@@ -22,6 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       has_applied: ${{ steps.result.outputs.has_applied }}
+      should_sync: ${{ steps.result.outputs.should_sync }}
     steps:
       - name: Checkout latest main
         uses: actions/checkout@v6
@@ -67,12 +68,17 @@ jobs:
 
           result = json.loads(Path("queue_result.json").read_text(encoding="utf-8"))
           has_applied = "true" if result.get("applied") else "false"
+          has_noop = "true" if result.get("noop") else "false"
+          should_sync = "true" if result.get("applied") or result.get("noop") else "false"
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
               handle.write(f"has_applied={has_applied}\n")
+              handle.write(f"should_sync={should_sync}\n")
           print(f"Applied updates present: {has_applied}")
+          print(f"Idempotent updates present: {has_noop}")
+          print(f"Public tree synchronization required: {should_sync}")
           PY
       - name: Rebuild encrypted public site
-        if: steps.result.outputs.has_applied == 'true'
+        if: steps.result.outputs.should_sync == 'true'
         env:
           TREE_DATA_KEY_B64: ${{ secrets.TREE_DATA_KEY_B64 }}
         run: python fullBandTreeGenerator.py --workbook "YJMB Trees.xlsx" --output-mode giant --skip-png --skip-svg --no-save-cards --skip-ambiguities
@@ -105,7 +111,7 @@ jobs:
 
   deploy:
     needs: apply
-    if: needs.apply.outputs.has_applied == 'true'
+    if: needs.apply.outputs.should_sync == 'true'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
