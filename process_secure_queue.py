@@ -21,7 +21,7 @@ def main() -> None:
     args = ap.parse_args()
     args.review_dir.mkdir(parents=True, exist_ok=True)
     args.changelog_dir.mkdir(parents=True, exist_ok=True)
-    result = {"applied": [], "review": []}
+    result = {"applied": [], "noop": [], "review": []}
 
     for encrypted_path in sorted(args.queue.glob("*.enc.json")):
         submission_id = encrypted_path.name.removesuffix(".enc.json")
@@ -31,30 +31,45 @@ def main() -> None:
             temp.write_text(json.dumps(protected, ensure_ascii=False), encoding="utf-8")
             try:
                 info = apply(args.workbook, temp, changelog_dir=args.changelog_dir)
-                applied_at = datetime.now(timezone.utc)
-                change_id = f"{applied_at.strftime('%Y%m%dT%H%M%S%fZ')}_{submission_id}"
-                changelog = {
-                    "id": change_id,
-                    "submissionId": submission_id,
-                    "appliedAt": applied_at.isoformat(),
-                    "receivedAt": protected.get("receivedAt"),
-                    "kind": info.get("kind"),
-                    "summary": info.get("summary"),
-                    "row": info.get("row"),
-                    "name": info.get("name"),
-                    "changes": info.get("changes") or [],
-                    "source": "admin" if str(info.get("kind", "")).startswith("admin-") else "member",
-                }
-                encrypt_file(changelog, args.changelog_dir / f"{change_id}.enc.json")
-                result["applied"].append({
-                    "id": submission_id,
-                    "row": info.get("row"),
-                    "kind": info.get("kind"),
-                    "summary": info.get("summary"),
-                    "changes": len(info.get("changes") or []),
-                    "changeId": change_id,
-                })
-                encrypted_path.unlink()
+                if info.get("noop"):
+                    # The authoritative workbook already contains the requested
+                    # value. This is a successful idempotent request, not an admin
+                    # conflict. Remove it from the queue and tell the workflow to
+                    # rebuild/deploy the public tree so a stale Pages snapshot can
+                    # catch up with the workbook. No changelog entry is needed
+                    # because no workbook cell changed during this submission.
+                    result["noop"].append({
+                        "id": submission_id,
+                        "row": info.get("row"),
+                        "kind": info.get("kind"),
+                        "summary": info.get("summary"),
+                    })
+                    encrypted_path.unlink()
+                else:
+                    applied_at = datetime.now(timezone.utc)
+                    change_id = f"{applied_at.strftime('%Y%m%dT%H%M%S%fZ')}_{submission_id}"
+                    changelog = {
+                        "id": change_id,
+                        "submissionId": submission_id,
+                        "appliedAt": applied_at.isoformat(),
+                        "receivedAt": protected.get("receivedAt"),
+                        "kind": info.get("kind"),
+                        "summary": info.get("summary"),
+                        "row": info.get("row"),
+                        "name": info.get("name"),
+                        "changes": info.get("changes") or [],
+                        "source": "admin" if str(info.get("kind", "")).startswith("admin-") else "member",
+                    }
+                    encrypt_file(changelog, args.changelog_dir / f"{change_id}.enc.json")
+                    result["applied"].append({
+                        "id": submission_id,
+                        "row": info.get("row"),
+                        "kind": info.get("kind"),
+                        "summary": info.get("summary"),
+                        "changes": len(info.get("changes") or []),
+                        "changeId": change_id,
+                    })
+                    encrypted_path.unlink()
             except ReviewRequired as exc:
                 destination = args.review_dir / encrypted_path.name
                 if destination.exists():

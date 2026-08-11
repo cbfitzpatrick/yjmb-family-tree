@@ -579,9 +579,22 @@ def apply(workbook: Path, submission_file: Path, *, changelog_dir: Path = Path("
         else:
             raise ReviewRequired(f"Unsupported update kind: {kind}")
 
-        if not changes:
-            raise ReviewRequired("The requested update would not change any workbook cells.")
         resulting_name = row_name(ws, row, mapping) if kind != "admin-delete" else ""
+        if not changes:
+            # Idempotent submissions are successful, not conflicts. This can happen
+            # when the authoritative workbook already contains an edit that the
+            # currently deployed encrypted tree has not caught up with yet. Marking
+            # the request as a no-op lets the queue processor remove it cleanly and
+            # ask the workflow to rebuild/redeploy the public tree from the current
+            # authoritative workbook.
+            return {
+                "row": row,
+                "kind": kind,
+                "summary": summary,
+                "changes": [],
+                "name": resulting_name,
+                "noop": True,
+            }
         tmp = workbook.with_suffix(".secure-update.tmp.xlsx")
         wb.save(tmp)
         wb.close()
@@ -592,6 +605,7 @@ def apply(workbook: Path, submission_file: Path, *, changelog_dir: Path = Path("
             "summary": summary,
             "changes": changes,
             "name": resulting_name,
+            "noop": False,
         }
     finally:
         try:
