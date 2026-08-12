@@ -105,9 +105,39 @@
           <strong>Admin-only feature lab</strong>
         </div>
         <p>These controls preview unfinished visual features only inside Admin Mode. They do not alter the workbook, encrypted tree data, or what ordinary viewers see.</p>
+
+        <article class="admin-feature-card admin-sample-builder">
+          <h3>Standalone sample card</h3>
+          <p>Type any sample name and instrument/section, then toggle individual prepared icons. This card is generated entirely on this page, so you do not need to find a matching person in the tree.</p>
+          <div class="admin-sample-fields">
+            <label class="form-field">
+              <span>First / displayed given name</span>
+              <input id="admin-sample-given" type="text" value="Tom" autocomplete="off">
+            </label>
+            <label class="form-field">
+              <span>Displayed last name</span>
+              <input id="admin-sample-family" type="text" value="Culpepper" autocomplete="off">
+            </label>
+            <label class="form-field">
+              <span>Instrument / section</span>
+              <input id="admin-sample-instrument" type="text" value="Trumpet" autocomplete="off" placeholder="Trumpet, Alto Sax, Drumline, Pit, Guard…">
+            </label>
+          </div>
+          <div class="admin-sample-workbench">
+            <div class="admin-sample-card-stage">
+              <div id="admin-sample-card" class="admin-feature-sample-card" aria-label="Generated sample card"></div>
+              <div id="admin-sample-section-label" class="admin-sample-section-label"></div>
+            </div>
+            <fieldset class="admin-sample-icon-fieldset">
+              <legend>Icons on sample card</legend>
+              <div id="admin-sample-icon-toggles" class="admin-sample-icon-toggles"></div>
+            </fieldset>
+          </div>
+        </article>
+
         <div class="admin-feature-grid">
           <article class="admin-feature-card">
-            <h3>Prepared card icons</h3>
+            <h3>Prepared icons on real Admin cards</h3>
             <p>Temporarily render the prepared leadership/Band Club icons on cards in the Admin Tree / Cards view.</p>
             <label class="admin-feature-toggle"><input id="admin-preview-icons" type="checkbox"> Show card icons in Admin Tree / Cards</label>
           </article>
