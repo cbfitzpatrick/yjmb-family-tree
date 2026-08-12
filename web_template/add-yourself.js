@@ -314,8 +314,21 @@ function treeCardGivenName() {
   return given;
 }
 
+function treeCardFamilyName() {
+  const maiden = q('#self-family').value.trim();
+  const married = q('#self-married').value.trim();
+  if (radioValue('changed-last-name') !== 'yes' || !married) return maiden || married;
+  const preference = radioValue('tree-last-name-preference') || 'maiden';
+  if (preference === 'married') return married;
+  if (preference === 'both') {
+    if (normalize(maiden) === normalize(married)) return maiden || married;
+    return [maiden, married].filter(Boolean).join(' ');
+  }
+  return maiden || married;
+}
+
 function treeCardName() {
-  return [treeCardGivenName(), q('#self-family').value.trim()].filter(Boolean).join(' ');
+  return [treeCardGivenName(), treeCardFamilyName()].filter(Boolean).join(' ');
 }
 
 const FORMAL_LEADERSHIP_OPTIONS = [
@@ -1297,21 +1310,13 @@ function previewBandStyle(year, layout) {
 
 function sectionGradient(sections) {
   const list = (sections || []).length ? sections : ['unknown'];
-  const pairs = list.map((section) => {
-    const pair = state.data.sectionGradients?.[section];
-    if (Array.isArray(pair) && pair.length >= 2) return [pair[0], pair[1]];
-    const fallback = state.data.sectionColors?.[section] || '#D3D3D3';
-    return [fallback, fallback];
-  });
-  if (pairs.length === 1) {
-    const [start, end] = pairs[0];
-    return start === end ? start : `linear-gradient(135deg, ${start} 0%, ${end} 100%)`;
-  }
+  const colors = list.map((section) => state.data.sectionColors?.[section] || state.data.sectionGradients?.[section]?.[0] || '#D3D3D3');
+  if (colors.length === 1) return colors[0];
   const stops = [];
-  pairs.forEach(([startColor, endColor], index) => {
-    const start = (index / pairs.length) * 100;
-    const end = ((index + 1) / pairs.length) * 100;
-    stops.push(`${startColor} ${start}%`, `${endColor} ${end}%`);
+  colors.forEach((color, index) => {
+    const start = (index / colors.length) * 100;
+    const end = ((index + 1) / colors.length) * 100;
+    stops.push(`${color} ${start}%`, `${color} ${end}%`);
   });
   return `linear-gradient(90deg, ${stops.join(', ')})`;
 }

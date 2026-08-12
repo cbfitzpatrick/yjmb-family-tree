@@ -1,0 +1,17 @@
+YJMB v17.6 cumulative hotfix
+
+This package is cumulative over the v17.5 hotfix and retains the v17.4 lossless
+online-tree synchronization, v17.3 idempotent sync, v17.2 live Pages deployment,
+and v17.1 stale-snapshot fixes carried by v17.5.
+
+v17.6 additionally changes:
+- Admin Feature Preview / icon testing
+- bug-report trigger/close behavior
+- slash-free dual surname display
+- mobile toolbar tap-to-toggle behavior
+- solid section color ramps
+- asset reload controls
+- no empty icon-corner name reservation
+- incoming VET/RAT reference propagation after identity/year/section edits
+
+No workbook, real secrets, plaintext tree payload, .env/.dev.vars, or Git metadata are included.

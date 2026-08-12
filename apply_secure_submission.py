@@ -4,7 +4,9 @@
 v17 rules:
 - Normal authenticated additions/corrections apply without an admin approval step.
 - A user's VET/RAT claims change only that user's row. Reciprocal edits are a
-  separate admin validation action.
+  separate admin validation action. When a person's canonical relationship
+  identity (name, RAT year, or Instrument/Section) changes, relationship cells
+  that uniquely resolve to that person are rewritten to the new canonical text.
 - Every caller receives a cell-level before/after change set so the queue
   processor can write an encrypted, revertible changelog.
 - Missing additive v17 columns are created automatically. Existing columns are
@@ -26,7 +28,7 @@ from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter, range_boundaries
 
 from yjmb_schema import ensure_optional_columns, find_header_row, header_key
-from yjmb_taxonomy import SECTION_DISPLAY, canonical_formal_roles, canonical_section_entry, informal_roles_from_text
+from yjmb_taxonomy import SECTION_DISPLAY, canonical_formal_roles, canonical_section_entry, informal_roles_from_text, recognized_sections
 
 
 class ReviewRequired(Exception):
@@ -289,6 +291,58 @@ def rows_matching_person(ws, header_row: int, mapping: dict[str, int], name: str
     ]
 
 
+def relationship_columns(mapping: dict[str, int], rat_cols: list[tuple[int, int]]) -> list[int]:
+    return [mapping["vet"], *(col for _, col in rat_cols)]
+
+
+def relationship_locations_resolving_to(
+    ws, header_row: int, target_row: int, mapping: dict[str, int], rat_cols: list[tuple[int, int]]
+) -> list[tuple[int, int]]:
+    """Return relationship cells that uniquely identify ``target_row``.
+
+    Name + RAT year is normally sufficient. If duplicate same-name/same-year
+    rows exist, the relationship's section is used as a conservative
+    disambiguator. Ambiguous cells are intentionally left untouched.
+    """
+    locations: list[tuple[int, int]] = []
+    for source_row in range(header_row + 1, ws.max_row + 1):
+        for col in relationship_columns(mapping, rat_cols):
+            parsed = parse_relation_edit(ws.cell(source_row, col).value)
+            if not parsed:
+                continue
+            ref_name, ref_year, ref_section = parsed
+            candidates = rows_matching_person(ws, header_row, mapping, ref_name, ref_year)
+            if len(candidates) > 1:
+                ref_sections = set(recognized_sections(ref_section))
+                if ref_sections:
+                    by_section = [
+                        row for row in candidates
+                        if ref_sections & set(recognized_sections(ws.cell(row, mapping["instrument"]).value))
+                    ]
+                    if by_section:
+                        candidates = by_section
+            if candidates == [target_row]:
+                locations.append((source_row, col))
+    return locations
+
+
+def propagate_person_relationship_identity(
+    ws, header_row: int, target_row: int, mapping: dict[str, int], rat_cols: list[tuple[int, int]],
+    labels: dict[int, str], locations: list[tuple[int, int]], old_relation: str, changes: list[dict[str, Any]]
+) -> int:
+    """Rewrite incoming VET/RAT references after a person's identity changes."""
+    new_relation = person_relation(ws, target_row, mapping)
+    if norm(new_relation) == norm(old_relation):
+        return 0
+    updated = 0
+    for source_row, col in locations:
+        before_count = len(changes)
+        change_cell(ws, source_row, col, new_relation, labels[col], changes)
+        if len(changes) > before_count:
+            updated += 1
+    return updated
+
+
 def create_missing_rat_from_correction(
     ws, header_row, source_row, mapping, labels, label_to_col, change_payload, changes
 ) -> list[int]:
@@ -532,8 +586,14 @@ def apply_field_changes(ws, row, changes_payload, labels, label_to_col, changes,
         change_cell(ws, row, col, item.get("after"), labels[col], changes)
 
 
-def apply_correction(ws, header_row, mapping, labels, label_to_col, payload, changes):
+def apply_correction(ws, header_row, mapping, rat_cols, labels, label_to_col, payload, changes):
     row = row_for_id(ws, header_row, payload.get("personId"))
+    # Capture every relationship cell that uniquely points to this row before
+    # changing its name/year/section. Those references are then rewritten to the
+    # post-edit canonical relationship text so the workbook cannot retain stale
+    # labels for the same person.
+    old_relation = person_relation(ws, row, mapping)
+    incoming_locations = relationship_locations_resolving_to(ws, header_row, row, mapping, rat_cols)
     # Member corrections intentionally apply against the authoritative workbook
     # even when the browser's encrypted-tree snapshot is older. change_cell()
     # records the workbook's *actual* current value in the encrypted changelog,
@@ -541,20 +601,34 @@ def apply_correction(ws, header_row, mapping, labels, label_to_col, payload, cha
     # drift into an administrator-review loop. Structural validation still runs.
     change_payload = payload.get("changes")
     apply_field_changes(ws, row, change_payload, labels, label_to_col, changes, stale_check=False)
+    propagated = propagate_person_relationship_identity(
+        ws, header_row, row, mapping, rat_cols, labels, incoming_locations, old_relation, changes
+    )
     created = create_missing_rat_from_correction(
         ws, header_row, row, mapping, labels, label_to_col, change_payload, changes
     )
-    suffix = f" and created/reciprocated {len(created)} new RAT row(s)" if created else ""
+    suffixes = []
+    if created:
+        suffixes.append(f"created/reciprocated {len(created)} new RAT row(s)")
+    if propagated:
+        suffixes.append(f"updated {propagated} incoming relationship reference(s)")
+    suffix = " and " + "; ".join(suffixes) if suffixes else ""
     return row, f"Updated {norm(payload.get('personId'))}{suffix}"
 
 
-def apply_admin_patch(ws, header_row, labels, label_to_col, payload, changes):
+def apply_admin_patch(ws, header_row, mapping, rat_cols, labels, label_to_col, payload, changes):
     row = row_for_id(ws, header_row, payload.get("personId"))
+    old_relation = person_relation(ws, row, mapping)
+    incoming_locations = relationship_locations_resolving_to(ws, header_row, row, mapping, rat_cols)
     # An authenticated administrator patch follows the same authoritative-value
     # rule. The submitted ``before`` value is UI context only; the changelog
     # captures the real workbook value that was replaced.
     apply_field_changes(ws, row, payload.get("changes"), labels, label_to_col, changes, stale_check=False)
-    return row, f"Admin edited {norm(payload.get('personId'))}"
+    propagated = propagate_person_relationship_identity(
+        ws, header_row, row, mapping, rat_cols, labels, incoming_locations, old_relation, changes
+    )
+    suffix = f" and updated {propagated} incoming relationship reference(s)" if propagated else ""
+    return row, f"Admin edited {norm(payload.get('personId'))}{suffix}"
 
 
 def apply_admin_add(ws, header_row, mapping, labels, label_to_col, payload, changes):
@@ -683,9 +757,9 @@ def apply(workbook: Path, submission_file: Path, *, changelog_dir: Path = Path("
         if kind in {"addition", "add", "member-add"}:
             row, summary = apply_addition(ws, header_row, mapping, rat_cols, labels, label_to_col, payload, changes)
         elif kind == "correction":
-            row, summary = apply_correction(ws, header_row, mapping, labels, label_to_col, payload, changes)
+            row, summary = apply_correction(ws, header_row, mapping, rat_cols, labels, label_to_col, payload, changes)
         elif kind == "admin-patch":
-            row, summary = apply_admin_patch(ws, header_row, labels, label_to_col, payload, changes)
+            row, summary = apply_admin_patch(ws, header_row, mapping, rat_cols, labels, label_to_col, payload, changes)
         elif kind == "admin-add":
             row, summary = apply_admin_add(ws, header_row, mapping, labels, label_to_col, payload, changes)
         elif kind == "admin-delete":

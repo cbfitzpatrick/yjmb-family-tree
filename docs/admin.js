@@ -10,11 +10,38 @@ const state = {
   adding: false,
   sheetChanges: new Map(),
   scale: 0.58,
+  previewCardIcons: false,
+  previewIconGuides: false,
 };
 
 const ADMIN_HEADERS = () => ({ 'X-Developer-Key': state.adminKey });
 const norm = (value) => String(value ?? '').trim();
 const lower = (value) => norm(value).toLowerCase();
+
+async function reloadAdminAssets() {
+  const button = q('#admin-reload-assets');
+  if (button) button.disabled = true;
+  try {
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.filter((key) => /yjmb|github|pages/i.test(key)).map((key) => caches.delete(key)));
+    }
+    const stamp = Date.now();
+    const files = ['styles.css', 'admin.js', 'secure-data.js', 'section-leader-icon.png', 'rat-parent-icon.png', 'band-club-icon.png'];
+    await Promise.all(files.map(async (file) => {
+      try {
+        const url = new URL(file, window.location.href);
+        url.searchParams.set('_assetReload', String(stamp));
+        await fetch(url, { cache: 'reload', credentials: 'same-origin' });
+      } catch { /* optional asset */ }
+    }));
+    const next = new URL(window.location.href);
+    next.searchParams.set('_assetReload', String(stamp));
+    window.location.replace(next.toString());
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
 
 function status(message, isError = false) {
   const el = q('#admin-status');
@@ -33,26 +60,20 @@ function htmlEscape(value) {
   return String(value ?? '').replace(/[&<>'"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[ch]));
 }
 
-function gradientForSection(section) {
-  const pair = state.data.sectionGradients?.[section];
-  if (Array.isArray(pair) && pair.length >= 2) return [pair[0], pair[1]];
-  const fallback = state.data.sectionColors?.[section] || '#d9d9d9';
-  return [fallback, fallback];
+function colorForSection(section) {
+  return state.data.sectionColors?.[section] || state.data.sectionGradients?.[section]?.[0] || '#d9d9d9';
 }
 
 function cardBackground(person) {
   const sections = (person.instruments || []).filter(Boolean);
   if (!sections.length) return '#d9d9d9';
-  if (sections.length === 1) {
-    const [start, end] = gradientForSection(sections[0]);
-    return start === end ? start : `linear-gradient(135deg, ${start} 0%, ${end} 100%)`;
-  }
+  if (sections.length === 1) return colorForSection(sections[0]);
   const stops = [];
   sections.forEach((section, i) => {
-    const [startColor, endColor] = gradientForSection(section);
+    const color = colorForSection(section);
     const start = (100 * i / sections.length).toFixed(4);
     const end = (100 * (i + 1) / sections.length).toFixed(4);
-    stops.push(`${startColor} ${start}%`, `${endColor} ${end}%`);
+    stops.push(`${color} ${start}%`, `${color} ${end}%`);
   });
   return `linear-gradient(90deg, ${stops.join(', ')})`;
 }
@@ -65,7 +86,7 @@ function adminCardNameParts(person) {
   return words.length > 1 ? [words.slice(0, -1).join(' '), words.at(-1)] : [words[0] || 'Unknown'];
 }
 
-function adminCardFontSize(person, sourceWidth = 150) {
+function adminCardFontSize(person, sourceWidth = 150, hasIcons = false) {
   const canvas = adminCardFontSize.canvas || (adminCardFontSize.canvas = document.createElement('canvas'));
   const context = canvas.getContext('2d');
   const lines = adminCardNameParts(person);
@@ -73,8 +94,37 @@ function adminCardFontSize(person, sourceWidth = 150) {
   if (!context) return base;
   context.font = `${base}px Arial, Helvetica, sans-serif`;
   const widest = Math.max(1, ...lines.map((line) => context.measureText(line).width));
-  const usable = Math.max(70, Number(sourceWidth || 150) - 44);
+  const usable = Math.max(70, Number(sourceWidth || 150) - (hasIcons ? 44 : 24));
   return Math.max(13, Math.min(base, Math.floor(base * usable / widest)));
+}
+
+function inlineRoleIconSvg(kind) {
+  const icons = {
+    'drum-major': '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5c1.7-.8 3.2.2 3.6 1.7l.6 2.3.8-4.6c.2-1.2 2-1 1.9.3l-.4 5.2.9-4.3c.3-1.2 2.1-.8 1.8.4l-.9 4.3.9-3.3c.3-1.1 2-.6 1.7.5l-1.1 4.2c-.6 2.4-2 4-4 4.7l-2.8 1-2.3-6.1L4 5.5Zm16 0c-1.7-.8-3.2.2-3.6 1.7l-.6 2.3-.8-4.6c-.2-1.2-2-1-1.9.3l.4 5.2-.9-4.3c-.3-1.2-2.1-.8-1.8.4l.9 4.3-.9-3.3c.3-1.1 2-.6 1.7.5l-1.1 4.2c-.6 2.4-2 4-4 4.7l2.8 1 2.3-6.1L20 5.5Z" fill="currentColor"/></svg>',
+    'mcm': '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h4l1.3-2h5.4L16 7h4v12H4Z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="13" r="4" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
+    'libraries': '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5.5c3.2-.8 6-.2 9 1.8v12c-3-2-5.8-2.6-9-1.8Zm18 0c-3.2-.8-6-.2-9 1.8v12c3-2 5.8-2.6 9-1.8Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
+    'uniforms': '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 4 4 2 4-2 4 4-3 3v9H7v-9L4 8Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M12 6v14M9.5 10h5" stroke="currentColor" stroke-width="1.4"/></svg>',
+    'guard-captain': '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3v18M8 4l10 3-10 4Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>',
+    'informal-leadership': '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10h4l8-4v12l-8-4H4Zm4 4 2 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>',
+    'other-leadership': '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9Z" fill="none" stroke="currentColor" stroke-width="1.7"/></svg>',
+  };
+  return icons[kind] || '';
+}
+
+function adminCardIconElement(kind, sample = false) {
+  const wrapper = document.createElement('span');
+  wrapper.className = sample ? 'admin-icon-sample-icon' : `card-status-icon card-role-icon icon-${kind}`;
+  const imageAssets = { 'section-leader': 'section-leader-icon.png', 'rat-parent': 'rat-parent-icon.png', 'band-club': 'band-club-icon.png' };
+  if (imageAssets[kind]) {
+    const img = document.createElement('img'); img.src = imageAssets[kind]; img.alt = ''; wrapper.appendChild(img);
+  } else {
+    wrapper.innerHTML = inlineRoleIconSvg(kind);
+  }
+  return wrapper;
+}
+
+function personPreviewIconKinds(person) {
+  return [...new Set([...(person.leadershipIcons || []), ...(person.bandClubLeadership ? ['band-club'] : [])])];
 }
 
 function relationLine(segment, width, color) {
@@ -118,7 +168,9 @@ function renderAdminTree() {
     card.style.width = `${Number(c.width || 150) * state.scale}px`;
     card.style.height = `${Number(c.height || 80) * state.scale}px`;
     card.style.background = cardBackground(person);
-    card.style.fontSize = `${adminCardFontSize(person, Number(c.width || 150)) * state.scale}px`;
+    const previewKinds = state.previewCardIcons ? personPreviewIconKinds(person) : [];
+    card.style.fontSize = `${adminCardFontSize(person, Number(c.width || 150), previewKinds.length > 0) * state.scale}px`;
+    card.classList.toggle('admin-preview-icon-guides', state.previewIconGuides);
     const nameWrap = document.createElement('span');
     nameWrap.className = 'admin-tree-card-name';
     for (const lineText of adminCardNameParts(person)) {
@@ -128,6 +180,7 @@ function renderAdminTree() {
       nameWrap.appendChild(line);
     }
     card.appendChild(nameWrap);
+    for (const kind of previewKinds) card.appendChild(adminCardIconElement(kind));
     card.title = `${person.displayName || person.name} · ${person.ratYearLabel || '?'} · ${person.instrumentRaw || '?'}`;
     if (filter) {
       const hay = [person.name, person.displayName, person.personalNickname, person.sectionNicknames, person.ratYearLabel, person.instrumentRaw].map(lower).join(' ');
@@ -458,6 +511,23 @@ async function loadChangelog() {
   } catch (error) { host.textContent = error.message; }
 }
 
+function renderFeaturePreview() {
+  const gallery = q('#admin-icon-gallery');
+  if (!gallery) return;
+  gallery.replaceChildren();
+  const labels = [
+    ['section-leader', 'Section Leader'], ['guard-captain', 'Guard Captain'], ['drum-major', 'Drum Major'],
+    ['rat-parent', 'RAT Parent'], ['mcm', 'MCM'], ['libraries', 'Libraries'], ['uniforms', 'Uniforms'],
+    ['informal-leadership', 'Informal leadership'], ['other-leadership', 'Other formal leadership'], ['band-club', 'Band Club'],
+  ];
+  for (const [kind, label] of labels) {
+    const item = document.createElement('div'); item.className = 'admin-icon-sample';
+    item.appendChild(adminCardIconElement(kind, true));
+    const text = document.createElement('span'); text.textContent = label; item.appendChild(text);
+    gallery.appendChild(item);
+  }
+}
+
 function selectTab(name) {
   qa('.admin-tab').forEach((tab) => tab.setAttribute('aria-selected', String(tab.dataset.adminTab === name)));
   qa('[data-admin-panel]').forEach((panel) => { panel.hidden = panel.dataset.adminPanel !== name; });
@@ -465,6 +535,7 @@ function selectTab(name) {
   if (name === 'requests') loadRequests();
   if (name === 'reciprocity') renderReciprocity();
   if (name === 'unknown') renderUnknown();
+  if (name === 'features') renderFeaturePreview();
   if (name === 'changelog') loadChangelog();
 }
 
@@ -490,6 +561,7 @@ async function unlockAdmin() {
 
 function bind() {
   q('#admin-unlock').addEventListener('click', unlockAdmin);
+  q('#admin-reload-assets')?.addEventListener('click', reloadAdminAssets);
   q('#admin-key').addEventListener('keydown', (event) => { if (event.key === 'Enter') unlockAdmin(); });
   qa('.admin-tab').forEach((tab) => tab.addEventListener('click', () => selectTab(tab.dataset.adminTab)));
   q('#admin-person-search').addEventListener('input', renderAdminTree);
@@ -504,6 +576,8 @@ function bind() {
   q('#admin-refresh-reciprocity').addEventListener('click', renderReciprocity);
   q('#admin-refresh-unknown').addEventListener('click', renderUnknown);
   q('#admin-refresh-changelog').addEventListener('click', loadChangelog);
+  q('#admin-preview-icons')?.addEventListener('change', (event) => { state.previewCardIcons = event.target.checked; renderAdminTree(); renderFeaturePreview(); });
+  q('#admin-preview-icon-guides')?.addEventListener('change', (event) => { state.previewIconGuides = event.target.checked; renderAdminTree(); });
   q('#admin-export').addEventListener('click', async () => {
     try { status(`Downloaded ${await window.YJMBSecureData.downloadDeveloperWorkbook(state.adminKey)}.`); }
     catch (error) { status(error.message, true); }
