@@ -865,6 +865,28 @@ button:disabled { cursor: wait; opacity: .65; }
   background: #fafafa;
 }
 
+/* v17.6 toolbar refresh and bug dialog close controls. */
+.toolbar-refresh-icon { width: 20px; height: 20px; display: block; }
+.bug-report-form { position: relative; }
+.bug-report-close {
+  position: absolute;
+  top: 7px;
+  right: 8px;
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #3f3f46;
+  font-size: 26px;
+  line-height: 1;
+}
+.bug-report-close:hover, .bug-report-close:focus-visible { background: #f4f4f5; color: #111827; }
+.bug-report-form > .field-help:first-of-type { padding-right: 34px; }
+
 /* Admin surface */
 .admin-page { background: #f4f4f5; }
 .admin-header {
@@ -907,6 +929,27 @@ button:disabled { cursor: wait; opacity: .65; }
 .admin-item-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 9px; }
 .admin-code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .admin-status { min-height: 24px; margin: 8px 0; color: #075985; font-weight: 700; }
+.admin-feature-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(230px,1fr)); gap: 12px; }
+.admin-feature-card { padding: 13px; border: 1px solid #d4d4d8; border-radius: 10px; background: #fafafa; }
+.admin-feature-card h3 { margin: 0 0 6px; font-size: 15px; }
+.admin-feature-card p { margin: 4px 0 9px; color: var(--muted); font-size: 12px; line-height: 1.4; }
+.admin-feature-toggle { display: flex; align-items: center; gap: 8px; font-weight: 700; }
+.admin-icon-gallery { display: grid; grid-template-columns: repeat(auto-fill,minmax(128px,1fr)); gap: 9px; margin-top: 12px; }
+.admin-icon-sample { display: grid; grid-template-columns: 34px 1fr; align-items: center; gap: 8px; min-height: 52px; padding: 8px; border: 1px solid #d4d4d8; border-radius: 8px; background: #fff; font-size: 12px; }
+.admin-icon-sample-icon { position: relative; display: grid; place-items: center; width: 28px; height: 28px; color: #000; }
+.admin-icon-sample-icon img, .admin-icon-sample-icon svg { width: 100%; height: 100%; object-fit: contain; display: block; }
+.admin-tree-card .card-role-icon { width: calc(18px * .58); height: calc(18px * .58); }
+.admin-tree-card .card-role-icon.icon-section-leader { left: calc(4px * .58); top: calc(4px * .58); }
+.admin-tree-card .card-role-icon.icon-guard-captain { left: calc(25px * .58); top: calc(4px * .58); }
+.admin-tree-card .card-role-icon.icon-drum-major { right: calc(4px * .58); top: calc(4px * .58); }
+.admin-tree-card .card-role-icon.icon-rat-parent { left: calc(4px * .58); bottom: calc(4px * .58); }
+.admin-tree-card .card-role-icon.icon-band-club { right: calc(4px * .58); bottom: calc(4px * .58); }
+.admin-tree-card .card-role-icon.icon-mcm,
+.admin-tree-card .card-role-icon.icon-libraries,
+.admin-tree-card .card-role-icon.icon-uniforms,
+.admin-tree-card .card-role-icon.icon-informal-leadership,
+.admin-tree-card .card-role-icon.icon-other-leadership { right: calc(25px * .58); bottom: calc(4px * .58); }
+.admin-tree-card.admin-preview-icon-guides::after { content: ''; position: absolute; inset: 2px; pointer-events: none; border: 1px dashed rgba(0,0,0,.35); border-radius: 5px; }
 
 @media (max-width: 820px), (pointer: coarse) and (max-width: 950px) {
   .tree-page .toolbar-icon-button,
@@ -1012,9 +1055,10 @@ button:disabled { cursor: wait; opacity: .65; }
   white-space: nowrap;
   font: inherit;
 }
+.site-card.has-card-icons .site-card-name { padding-left: 23px; padding-right: 23px; }
 
-/* Future icon system: all roles use the same footprint. Display remains off
-   because cardIconsEnabled=false in the generated v17.5 data. */
+/* Future icon system: all roles use the same footprint. Production display
+   remains off, but Admin Mode can preview the prepared icon system locally. */
 .card-role-icon {
   width: 18px;
   height: 18px;
@@ -1069,11 +1113,6 @@ button:disabled { cursor: wait; opacity: .65; }
   list-style: none;
 }
 .tree-page .toolbar-bug-slot .bug-report-section > details > summary::-webkit-details-marker { display: none; }
-.tree-page .toolbar-bug-slot .bug-report-section > details > summary::before {
-  content: "🐞";
-  font-size: 19px;
-  line-height: 1;
-}
 .tree-page .toolbar-bug-slot .bug-report-section > details[open] > summary { border-bottom: 1px solid #a1a1aa; }
 .tree-page .toolbar-bug-slot .bug-report-form {
   position: absolute;
@@ -1123,4 +1162,24 @@ button:disabled { cursor: wait; opacity: .65; }
     width: auto;
     max-height: calc(100dvh - 76px);
   }
+}
+
+/* v17.6 mobile tree toolbar: hidden on entry, tap the tree to toggle it. */
+@media (max-width: 820px), (pointer: coarse) and (max-width: 950px) {
+  .tree-page .toolbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 110;
+    transition: transform .2s ease, opacity .2s ease;
+    will-change: transform;
+  }
+  .tree-page.mobile-toolbar-hidden .toolbar {
+    transform: translateY(calc(-100% - 2px));
+    opacity: 0;
+    pointer-events: none;
+  }
+  .tree-page .viewport { height: 100dvh; min-height: 100dvh; }
+  .tree-page .visualizer-panel { top: 136px; }
 }

@@ -90,6 +90,7 @@
             <span class="sr-only">Report a bug</span>
           </summary>
           <form class="bug-report-form">
+            <button class="bug-report-close" type="button" aria-label="Close bug report" title="Close bug report">×</button>
             <p class="field-help">Found something on this website that is not working correctly? Send the admins a bug report.</p>
             <label class="form-field form-field-wide">
               <span>What went wrong?</span>
@@ -122,6 +123,11 @@
       const form = slot.querySelector('.bug-report-form');
       const status = slot.querySelector('.bug-form-status');
       const button = slot.querySelector('.bug-submit');
+      const closeButton = slot.querySelector('.bug-report-close');
+      closeButton?.addEventListener('click', () => {
+        const details = slot.querySelector('details');
+        if (details) details.open = false;
+      });
       form.addEventListener('submit', async (event) => {
         event.preventDefault();
         if (form.elements.website.value) return;

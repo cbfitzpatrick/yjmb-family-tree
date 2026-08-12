@@ -1,0 +1,4 @@
+Overlay this folder onto the project root after `git pull --rebase origin main`.
+Compile/check the Python and JS files, run verify_public_repo.py, stage, run the verifier again, commit, pull --rebase, and push.
+Then manually run GitHub Actions -> Apply protected YJMB submissions -> Run workflow on main.
+v17.4 workflow_dispatch forces a protected workbook -> encrypted tree rebuild even when the automatic queue is empty.

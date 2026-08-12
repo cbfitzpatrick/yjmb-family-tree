@@ -11,6 +11,9 @@
     <a class="back-link" href="tree.html">← Tree</a>
     <h1>YJMB Admin</h1>
     <span class="admin-spacer"></span>
+    <button id="admin-reload-assets" class="toolbar-icon-button" type="button" aria-label="Reload newest page assets" title="Reload newest page assets">
+      <svg class="toolbar-refresh-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 8a8 8 0 1 0 1 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M19 3v5h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
     <button id="admin-export" class="secondary-button" type="button" hidden>Export workbook</button>
   </header>
 
@@ -35,6 +38,7 @@
         <button class="admin-tab" type="button" data-admin-tab="requests" aria-selected="false">Change Requests</button>
         <button class="admin-tab" type="button" data-admin-tab="reciprocity" aria-selected="false">Unreciprocated</button>
         <button class="admin-tab" type="button" data-admin-tab="unknown" aria-selected="false">Unknown Instruments</button>
+        <button class="admin-tab" type="button" data-admin-tab="features" aria-selected="false">Feature Preview</button>
         <button class="admin-tab" type="button" data-admin-tab="changelog" aria-selected="false">Changelog / Revert</button>
       </nav>
       <p id="admin-status" class="admin-status" role="status" aria-live="polite"></p>
@@ -94,6 +98,26 @@
         </div>
         <p>Review instrument/section text that the taxonomy could not confidently categorize. “Drumline” is Battery and “Pit” is Front Ensemble.</p>
         <div id="admin-unknown-list" class="admin-list"></div>
+      </section>
+
+      <section class="admin-panel" data-admin-panel="features" hidden>
+        <div class="admin-toolbar">
+          <strong>Admin-only feature lab</strong>
+        </div>
+        <p>These controls preview unfinished visual features only inside Admin Mode. They do not alter the workbook, encrypted tree data, or what ordinary viewers see.</p>
+        <div class="admin-feature-grid">
+          <article class="admin-feature-card">
+            <h3>Prepared card icons</h3>
+            <p>Temporarily render the prepared leadership/Band Club icons on cards in the Admin Tree / Cards view.</p>
+            <label class="admin-feature-toggle"><input id="admin-preview-icons" type="checkbox"> Show card icons in Admin Tree / Cards</label>
+          </article>
+          <article class="admin-feature-card">
+            <h3>Placement guide</h3>
+            <p>Show an inset guide on Admin cards while testing icon placement and name clearance.</p>
+            <label class="admin-feature-toggle"><input id="admin-preview-icon-guides" type="checkbox"> Show card placement guide</label>
+          </article>
+        </div>
+        <div id="admin-icon-gallery" class="admin-icon-gallery" aria-label="Prepared card icon gallery"></div>
       </section>
 
       <section class="admin-panel" data-admin-panel="changelog" hidden>

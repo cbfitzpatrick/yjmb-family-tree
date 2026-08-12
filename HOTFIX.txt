@@ -1,0 +1,15 @@
+YJMB v17.4 — lossless protected tree synchronization hotfix
+
+Fixes the case where a person/relationship exists in the protected exported XLSX
+but disappears from the encrypted website/admin spreadsheet during generation.
+
+- Website generation no longer omits workbook people because RAT Year is unresolved.
+- Raw VET/RAT/source fields are never blanked merely because a visual edge is ambiguous.
+- CI rebuilds use a fresh resolution cache, so stale cached skips cannot hide corrected relationships.
+- A workbook↔encrypted-site parity check fails closed if a named workbook row or source field is lost.
+- Relationship claims can still identify a unique person even when a real visual-parent conflict omits the edge.
+- Manual workflow_dispatch now forces a rebuild/deploy from secure/master_workbook.enc even when the auto queue is empty.
+- Connectors are restored to the historical gray #777777 single stroke with no white outline.
+- Includes the v17.3 idempotent synchronization/correction fixes.
+
+No Worker changes and no new secrets are required.

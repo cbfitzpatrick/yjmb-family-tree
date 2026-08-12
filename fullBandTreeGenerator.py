@@ -86,34 +86,35 @@ ACCESS_SECRETS_FILENAME = "access_secrets.json"
 
 # Order here is used by the legend only. A person's card follows the order in
 # that person's Instrument cell, as requested.
-# v17.5 section palette.  The browser uses the paired gradient endpoints below;
-# SECTION_COLORS remains as a representative solid for legacy/local renderers,
-# legends, and older encrypted-tree clients.  The palette intentionally avoids
-# red, neutral black/white/gray, and colors close to the Georgia Tech navy/gold
-# year-band background.
-SECTION_GRADIENTS: dict[str, tuple[str, str]] = {
-    # Woodwinds — airy aqua/cyan family.
-    "flute/piccolo": ("#D8F7F5", "#8EDFD8"),
-    "clarinet": ("#CFF1F5", "#73CFD7"),
-    "sax/saxophone": ("#C6EAF3", "#5BBCCB"),
-    # Brass — mint/lime-green family.
-    "trumpet": ("#E7F8D7", "#A6DA78"),
-    "mellophone": ("#DEF4CD", "#91CE67"),
-    "trombone": ("#D5EFC1", "#7FC259"),
-    "baritone": ("#CDE9B8", "#6CB74F"),
-    "sousaphone": ("#C3E3AE", "#58AA49"),
-    # Percussion — violet/lavender family.
-    "front ensemble": ("#EEE2FA", "#C5A0E6"),
-    "battery": ("#E2D3F5", "#A77FD4"),
-    # Visual groups — orchid/magenta-violet family (deliberately not red).
-    "guard": ("#F4DCF5", "#D99AD9"),
-    "goldrush": ("#EED5F5", "#C986D9"),
-    "golden girl": ("#E6CDF3", "#B573D2"),
-    "unknown": (UNKNOWN_COLOR, UNKNOWN_COLOR),
-}
+# v17.6 section palette. Each section has one solid card color. The visual
+# "gradient" is across the ordered instruments inside each family rather than
+# within an individual card: higher instruments are lighter and lower ones are
+# progressively darker. The palette intentionally avoids red, neutrals, and
+# colors close to the Georgia Tech navy/gold year-band background.
 SECTION_COLORS: dict[str, str] = {
-    section: colors[1] if section != "unknown" else UNKNOWN_COLOR
-    for section, colors in SECTION_GRADIENTS.items()
+    # Woodwinds — light-to-dark turquoise.
+    "flute/piccolo": "#B9F3E8",
+    "clarinet": "#74D9CB",
+    "sax/saxophone": "#2CB5A6",
+    # Brass — trumpet (highest) through sousaphone/tuba (lowest).
+    "trumpet": "#D6F5B8",
+    "mellophone": "#B7E88E",
+    "trombone": "#92D96B",
+    "baritone": "#68C64F",
+    "sousaphone": "#3FA23C",
+    # Percussion — pit/front ensemble lighter than battery/drumline.
+    "front ensemble": "#DCCAF5",
+    "battery": "#A684D8",
+    # Visual groups — light-to-dark orchid/violet.
+    "guard": "#F0D2F3",
+    "goldrush": "#D8A9E4",
+    "golden girl": "#BE7BD2",
+    "unknown": UNKNOWN_COLOR,
+}
+# Keep the legacy payload key for older clients, but make both endpoints equal
+# so no individual section card renders an internal gradient.
+SECTION_GRADIENTS: dict[str, tuple[str, str]] = {
+    section: (color, color) for section, color in SECTION_COLORS.items()
 }
 
 # Patterns are intentionally ordered from more specific to less specific.
@@ -888,7 +889,7 @@ class Person:
         if preference in {"both", "maidenandmarried", "familyandmarried", "bothlastnames"} and married:
             if loose_name_key(maiden) == loose_name_key(married):
                 return maiden or married
-            return " / ".join(value for value in (maiden, married) if value)
+            return " ".join(value for value in (maiden, married) if value)
         return maiden or married
 
     @property

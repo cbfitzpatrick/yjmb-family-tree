@@ -33,7 +33,9 @@ const status = q('#status');
 
 const SPECIAL_SECTION_BLUE = '#d5defe';
 const PACKED_TREE_GAP = 28;
-const TREE_VIEW_STORAGE_KEY = 'yjmbTreeViewV17_5';
+const TREE_VIEW_STORAGE_KEY = 'yjmbTreeViewV17_6';
+const MOBILE_TREE_MEDIA = '(max-width: 820px), (pointer: coarse) and (max-width: 950px)';
+const ASSET_RELOAD_FILES = ['styles.css', 'app.js', 'secure-data.js', 'developer-export.js', 'admin-mail.js', 'section-leader-icon.png', 'rat-parent-icon.png', 'band-club-icon.png'];
 
 function normalizeSearch(value) {
   return String(value ?? '').normalize('NFKD').toLowerCase().replace(/\s+/g, ' ').trim();
@@ -179,19 +181,20 @@ function gradientPairForSection(section) {
   return [fallback, fallback];
 }
 
+function solidColorForSection(section) {
+  return state.data?.sectionColors?.[section] || gradientPairForSection(section)[0] || '#D3D3D3';
+}
+
 function regularCardBackground(person) {
   const sections = (person.instruments || []).filter(Boolean);
   if (!sections.length) return '#D3D3D3';
-  if (sections.length === 1) {
-    const [start, end] = gradientPairForSection(sections[0]);
-    return start === end ? start : `linear-gradient(135deg, ${start} 0%, ${end} 100%)`;
-  }
+  if (sections.length === 1) return solidColorForSection(sections[0]);
   const stops = [];
   sections.forEach((section, index) => {
-    const [start, end] = gradientPairForSection(section);
+    const color = solidColorForSection(section);
     const left = 100 * index / sections.length;
     const right = 100 * (index + 1) / sections.length;
-    stops.push(`${start} ${left}%`, `${end} ${right}%`);
+    stops.push(`${color} ${left}%`, `${color} ${right}%`);
   });
   return `linear-gradient(90deg, ${stops.join(', ')})`;
 }
@@ -251,14 +254,17 @@ function cardNameParts(person) {
   return words.length > 1 ? { given: words.slice(0, -1).join(' '), family: words.at(-1) } : { given: display, family: '' };
 }
 
-function cardNameFontSize(parts, cardWidth) {
+function cardNameFontSize(parts, cardWidth, hasIcons = false) {
   const canvas = cardNameFontSize.canvas || (cardNameFontSize.canvas = document.createElement('canvas'));
   const context = canvas.getContext('2d');
   const base = 22;
   if (!context) return base;
   context.font = `${base}px Arial, Helvetica, sans-serif`;
   const maxMeasured = Math.max(context.measureText(parts.given || '').width, context.measureText(parts.family || '').width, 1);
-  const usable = Math.max(70, Number(cardWidth || 150) - 44);
+  // Do not reserve empty icon corners. Normal cards need only a modest edge
+  // margin; icon-bearing cards reserve additional room for the prepared badges.
+  const reserved = hasIcons ? 44 : 24;
+  const usable = Math.max(70, Number(cardWidth || 150) - reserved);
   return Math.max(13, Math.min(base, Math.floor(base * usable / maxMeasured)));
 }
 
@@ -306,10 +312,12 @@ function renderCards(data) {
       secondLine.textContent = parts.family;
       name.appendChild(secondLine);
     }
-    name.style.fontSize = `${cardNameFontSize(parts, card.width)}px`;
+    const hasCardIcons = Boolean(data.cardIconsEnabled && ((person.leadershipIcons || []).length || person.bandClubLeadership));
+    name.style.fontSize = `${cardNameFontSize(parts, card.width, hasCardIcons)}px`;
+    builtCard.classList.toggle('has-card-icons', hasCardIcons);
     builtCard.appendChild(name);
 
-    // All card icons remain disabled for now. The role-specific icon assets and
+    // All card icons remain disabled for normal viewers for now. The role-specific icon assets and
     // SVG definitions are prepared so they can be enabled later without another
     // data migration. RAT Parent uses the supplied cap artwork; current RAT is
     // deliberately not represented by that icon.
@@ -462,10 +470,7 @@ function renderSectionFilter() {
     });
     const swatch = document.createElement('span');
     swatch.className = 'section-swatch';
-    const pair = state.data.sectionGradients?.[section];
-    swatch.style.background = Array.isArray(pair) && pair.length >= 2
-      ? `linear-gradient(135deg, ${pair[0]}, ${pair[1]})`
-      : color;
+    swatch.style.background = color;
     const text = document.createElement('span');
     text.textContent = section;
     label.append(checkbox, swatch, text);
@@ -885,6 +890,60 @@ function bindInfoPanel() {
   });
 }
 
+function isMobileTree() {
+  return window.matchMedia(MOBILE_TREE_MEDIA).matches;
+}
+
+function setMobileToolbarVisible(visible) {
+  if (!isMobileTree()) {
+    document.body.classList.remove('mobile-toolbar-hidden');
+    return;
+  }
+  document.body.classList.toggle('mobile-toolbar-hidden', !visible);
+  requestAnimationFrame(syncYearAxisGeometry);
+}
+
+function bindMobileToolbarToggle() {
+  if (!viewport) return;
+  let start = null;
+  viewport.addEventListener('pointerdown', (event) => {
+    if (!isMobileTree() || event.pointerType === 'mouse') return;
+    start = { x: event.clientX, y: event.clientY, id: event.pointerId };
+  }, { passive: true });
+  viewport.addEventListener('pointerup', (event) => {
+    if (!start || start.id !== event.pointerId || !isMobileTree()) return;
+    const distance = Math.hypot(event.clientX - start.x, event.clientY - start.y);
+    start = null;
+    if (distance > 10) return;
+    setMobileToolbarVisible(document.body.classList.contains('mobile-toolbar-hidden'));
+  }, { passive: true });
+  viewport.addEventListener('pointercancel', () => { start = null; }, { passive: true });
+}
+
+async function reloadPageAssets() {
+  const button = q('#reload-assets');
+  if (button) button.disabled = true;
+  try {
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.filter((key) => /yjmb|github|pages/i.test(key)).map((key) => caches.delete(key)));
+    }
+    const stamp = Date.now();
+    await Promise.all(ASSET_RELOAD_FILES.map(async (file) => {
+      try {
+        const url = new URL(file, window.location.href);
+        url.searchParams.set('_assetReload', String(stamp));
+        await fetch(url, { cache: 'reload', credentials: 'same-origin' });
+      } catch { /* one unavailable optional asset should not block the reload */ }
+    }));
+    const next = new URL(window.location.href);
+    next.searchParams.set('_assetReload', String(stamp));
+    window.location.replace(next.toString());
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
 async function main() {
   try {
     const data = await window.YJMBSecureData.loadTreeData();
@@ -900,9 +959,10 @@ async function main() {
     status.hidden = true;
     viewport.hidden = false;
     if (!restoreTreeView()) {
-      setScale(window.matchMedia('(max-width: 820px), (pointer: coarse) and (max-width: 950px)').matches ? 0.8 : 1, { preserveFocus: false });
+      setScale(isMobileTree() ? 0.8 : 1, { preserveFocus: false });
       applyVisibility();
     }
+    if (isMobileTree()) setMobileToolbarVisible(false);
     requestAnimationFrame(syncYearAxisGeometry);
   } catch (error) {
     console.error(error);
@@ -915,10 +975,12 @@ q('#zoom-in').addEventListener('click', () => setScale(state.scale * 1.15));
 q('#zoom-out').addEventListener('click', () => setScale(state.scale / 1.15));
 q('#zoom-reset').addEventListener('click', () => setScale(1));
 q('#zoom-fit')?.addEventListener('click', fitVisible);
+q('#reload-assets')?.addEventListener('click', reloadPageAssets);
+bindMobileToolbarToggle();
 viewport.addEventListener('scroll', syncYearAxisScroll, { passive: true });
 window.addEventListener('pagehide', saveTreeView);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveTreeView(); });
-window.addEventListener('resize', () => { syncYearAxisGeometry(); renderYearAxis(); }, { passive: true });
+window.addEventListener('resize', () => { if (!isMobileTree()) setMobileToolbarVisible(true); syncYearAxisGeometry(); renderYearAxis(); }, { passive: true });
 q('#search').addEventListener('input', updateSearchResults);
 q('#search').addEventListener('keydown', (event) => {
   if (event.key === 'Enter') {
