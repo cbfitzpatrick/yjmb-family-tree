@@ -12,6 +12,7 @@ const state = {
   scale: 0.58,
   previewCardIcons: false,
   previewIconGuides: false,
+  previewLabIcons: new Set(['section-leader']),
 };
 
 const ADMIN_HEADERS = () => ({ 'X-Developer-Key': state.adminKey });
@@ -511,16 +512,94 @@ async function loadChangelog() {
   } catch (error) { host.textContent = error.message; }
 }
 
+const FEATURE_ICON_LABELS = [
+  ['section-leader', 'Section Leader'], ['guard-captain', 'Guard Captain'], ['drum-major', 'Drum Major'],
+  ['rat-parent', 'RAT Parent'], ['mcm', 'MCM'], ['libraries', 'Libraries'], ['uniforms', 'Uniforms'],
+  ['informal-leadership', 'Informal leadership'], ['other-leadership', 'Other formal leadership'], ['band-club', 'Band Club'],
+];
+
+function sampleCanonicalSection(rawValue) {
+  const text = lower(rawValue).replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!text) return 'unknown';
+  const rules = [
+    ['flute/piccolo', /\b(flute|piccolo)\b/],
+    ['clarinet', /\bclarinet\b/],
+    ['sax/saxophone', /\b(sax|saxophone|alto sax|tenor sax|bari sax|baritone sax)\b/],
+    ['trumpet', /\b(trumpet|cornet)\b/],
+    ['mellophone', /\b(mello|mellophone)\b/],
+    ['trombone', /\b(trombone|bone)\b/],
+    ['baritone', /\b(baritone|euphonium)\b/],
+    ['sousaphone', /\b(sousaphone|tuba)\b/],
+    ['front ensemble', /\b(front ensemble|pit|marimba|vibraphone|xylophone)\b/],
+    ['battery', /\b(battery|drumline|drum line|snare|quads?|tenors?|bass drum|cymbals?)\b/],
+    ['guard', /\b(color guard|guard|flag|rifle|saber|sab?re)\b/],
+    ['goldrush', /\b(gold ?rush)\b/],
+    ['golden girl', /\b(golden girl)\b/],
+  ];
+  return rules.find(([, pattern]) => pattern.test(text))?.[0] || (state.data.sectionColors?.[text] ? text : 'unknown');
+}
+
+function renderSampleFeatureCard() {
+  const host = q('#admin-sample-card');
+  if (!host) return;
+  const given = norm(q('#admin-sample-given')?.value) || 'First';
+  const family = norm(q('#admin-sample-family')?.value) || 'Last';
+  const instrument = norm(q('#admin-sample-instrument')?.value);
+  const section = sampleCanonicalSection(instrument);
+  const mock = {
+    cardGivenName: given, cardFamilyName: family, givenPreferredName: given, familyMaidenName: family,
+    displayName: `${given} ${family}`.trim(), name: `${given} ${family}`.trim(), instruments: [section],
+  };
+  const iconKinds = [...state.previewLabIcons];
+  host.replaceChildren();
+  host.style.background = cardBackground(mock);
+  host.classList.toggle('has-card-icons', iconKinds.length > 0);
+
+  const name = document.createElement('span');
+  name.className = 'admin-feature-sample-name';
+  name.style.fontSize = `${adminCardFontSize(mock, 150, iconKinds.length > 0)}px`;
+  for (const lineText of adminCardNameParts(mock)) {
+    const line = document.createElement('span');
+    line.className = 'admin-feature-sample-name-line';
+    line.textContent = lineText;
+    name.appendChild(line);
+  }
+  host.appendChild(name);
+  for (const kind of iconKinds) host.appendChild(adminCardIconElement(kind));
+
+  const label = q('#admin-sample-section-label');
+  if (label) label.textContent = `Preview category: ${section}${instrument ? ` · entered: ${instrument}` : ''}`;
+}
+
+function renderSampleIconToggles() {
+  const host = q('#admin-sample-icon-toggles');
+  if (!host) return;
+  host.replaceChildren();
+  for (const [kind, label] of FEATURE_ICON_LABELS) {
+    const wrapper = document.createElement('label');
+    wrapper.className = 'admin-sample-icon-toggle';
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.checked = state.previewLabIcons.has(kind);
+    input.addEventListener('change', () => {
+      if (input.checked) state.previewLabIcons.add(kind);
+      else state.previewLabIcons.delete(kind);
+      renderSampleFeatureCard();
+    });
+    const text = document.createElement('span');
+    text.textContent = label;
+    wrapper.append(input, text);
+    host.appendChild(wrapper);
+  }
+}
+
 function renderFeaturePreview() {
+  renderSampleIconToggles();
+  renderSampleFeatureCard();
   const gallery = q('#admin-icon-gallery');
   if (!gallery) return;
   gallery.replaceChildren();
-  const labels = [
-    ['section-leader', 'Section Leader'], ['guard-captain', 'Guard Captain'], ['drum-major', 'Drum Major'],
-    ['rat-parent', 'RAT Parent'], ['mcm', 'MCM'], ['libraries', 'Libraries'], ['uniforms', 'Uniforms'],
-    ['informal-leadership', 'Informal leadership'], ['other-leadership', 'Other formal leadership'], ['band-club', 'Band Club'],
-  ];
-  for (const [kind, label] of labels) {
+  for (const [kind, label] of FEATURE_ICON_LABELS) {
     const item = document.createElement('div'); item.className = 'admin-icon-sample';
     item.appendChild(adminCardIconElement(kind, true));
     const text = document.createElement('span'); text.textContent = label; item.appendChild(text);
@@ -578,6 +657,9 @@ function bind() {
   q('#admin-refresh-changelog').addEventListener('click', loadChangelog);
   q('#admin-preview-icons')?.addEventListener('change', (event) => { state.previewCardIcons = event.target.checked; renderAdminTree(); renderFeaturePreview(); });
   q('#admin-preview-icon-guides')?.addEventListener('change', (event) => { state.previewIconGuides = event.target.checked; renderAdminTree(); });
+  for (const selector of ['#admin-sample-given', '#admin-sample-family', '#admin-sample-instrument']) {
+    q(selector)?.addEventListener('input', renderSampleFeatureCard);
+  }
   q('#admin-export').addEventListener('click', async () => {
     try { status(`Downloaded ${await window.YJMBSecureData.downloadDeveloperWorkbook(state.adminKey)}.`); }
     catch (error) { status(error.message, true); }

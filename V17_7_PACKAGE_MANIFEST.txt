@@ -1,0 +1,13 @@
+YJMB v17.7 cumulative hotfix
+
+This package is cumulative over v17.6 and retains the v17.4 lossless online-tree synchronization,
+v17.3 idempotent sync, v17.2 live Pages deployment, v17.1 stale-snapshot handling,
+and all v17.5/v17.6 UI/editing changes.
+
+v17.7 additionally changes:
+- exact tree-toolbar bug button styling
+- true-center card-name layout even when icon clearance shrinks text
+- standalone Admin Feature Preview sample-card generator
+- independent prepared-icon toggles for the sample card
+
+No workbook, real secrets, plaintext tree payload, .env/.dev.vars, or Git metadata are included.
