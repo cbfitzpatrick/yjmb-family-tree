@@ -10,7 +10,7 @@ The script updates:
   * Section Nickname(s) and Specific Instrument(s) section labels before ':'
 
 Broad section names are canonicalized while recognized subsection/instrument
-information is retained, e.g. "Alto Sax" -> "Sax/Saxophone — Alto Saxophone" and
+information is retained, e.g. "Alto Sax" -> "Saxophone — Alto Saxophone" and
 "Rifle" -> "Guard — Rifle". If a cell contains unexplained text, it is
 reported and left unchanged instead of discarding the extra detail.
 """

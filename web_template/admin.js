@@ -128,13 +128,42 @@ function personPreviewIconKinds(person) {
   return [...new Set([...(person.leadershipIcons || []), ...(person.bandClubLeadership ? ['band-club'] : [])])];
 }
 
-function relationLine(segment, width, color) {
-  const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-  line.setAttribute('x1', segment.start.x); line.setAttribute('y1', segment.start.y);
-  line.setAttribute('x2', segment.end.x); line.setAttribute('y2', segment.end.y);
-  line.setAttribute('stroke', color); line.setAttribute('stroke-width', width);
-  line.setAttribute('stroke-linecap', 'square');
-  return line;
+function appendAdminConnectorFilter(svg) {
+  const ns = 'http://www.w3.org/2000/svg';
+  const defs = document.createElementNS(ns, 'defs');
+  const filter = document.createElementNS(ns, 'filter');
+  filter.id = 'admin-connector-outline-filter';
+  filter.setAttribute('x', '-10%'); filter.setAttribute('y', '-10%');
+  filter.setAttribute('width', '120%'); filter.setAttribute('height', '120%');
+
+  const dilate = document.createElementNS(ns, 'feMorphology');
+  dilate.setAttribute('in', 'SourceAlpha'); dilate.setAttribute('operator', 'dilate');
+  dilate.setAttribute('radius', '2'); dilate.setAttribute('result', 'expanded');
+  const ring = document.createElementNS(ns, 'feComposite');
+  ring.setAttribute('in', 'expanded'); ring.setAttribute('in2', 'SourceAlpha');
+  ring.setAttribute('operator', 'out'); ring.setAttribute('result', 'outlineMask');
+  const flood = document.createElementNS(ns, 'feFlood');
+  flood.setAttribute('flood-color', '#808080'); flood.setAttribute('flood-opacity', '0.25');
+  flood.setAttribute('result', 'outlineColor');
+  const mask = document.createElementNS(ns, 'feComposite');
+  mask.setAttribute('in', 'outlineColor'); mask.setAttribute('in2', 'outlineMask');
+  mask.setAttribute('operator', 'in'); mask.setAttribute('result', 'outline');
+  const merge = document.createElementNS(ns, 'feMerge');
+  const outlineNode = document.createElementNS(ns, 'feMergeNode'); outlineNode.setAttribute('in', 'outline');
+  const sourceNode = document.createElementNS(ns, 'feMergeNode'); sourceNode.setAttribute('in', 'SourceGraphic');
+  merge.append(outlineNode, sourceNode);
+  filter.append(dilate, ring, flood, mask, merge); defs.appendChild(filter); svg.appendChild(defs);
+}
+
+function adminConnectorPathData() {
+  const commands = [];
+  for (const connector of state.data.connectors || []) {
+    const segments = [connector.parentStem, ...(connector.siblingBus ? [connector.siblingBus] : []), ...(connector.childStems || [])].filter(Boolean);
+    for (const segment of segments) {
+      commands.push(`M ${segment.start.x} ${segment.start.y} L ${segment.end.x} ${segment.end.y}`);
+    }
+  }
+  return commands.join(' ');
 }
 
 function renderAdminTree() {
@@ -150,11 +179,18 @@ function renderAdminTree() {
   svg.setAttribute('width', Math.ceil(width * state.scale));
   svg.setAttribute('height', Math.ceil(height * state.scale));
 
-  for (const connector of state.data.connectors || []) {
-    const segments = [connector.parentStem, ...(connector.siblingBus ? [connector.siblingBus] : []), ...(connector.childStems || [])].filter(Boolean);
-    for (const segment of segments) {
-      svg.appendChild(relationLine(segment, state.data.connectorWidth || 9, '#777777'));
-    }
+  appendAdminConnectorFilter(svg);
+  const connectorD = adminConnectorPathData();
+  if (connectorD) {
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', connectorD);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', '#000000');
+    path.setAttribute('stroke-width', String(state.data.connectorWidth || 9));
+    path.setAttribute('stroke-linecap', 'square');
+    path.setAttribute('stroke-linejoin', 'miter');
+    path.setAttribute('filter', 'url(#admin-connector-outline-filter)');
+    svg.appendChild(path);
   }
 
   const filter = lower(q('#admin-person-search').value);
@@ -488,7 +524,7 @@ async function loadChangelog() {
   try {
     const result = await adminApi('/admin/changelog'); host.replaceChildren();
     const entries = result.entries || [];
-    if (!entries.length) { host.textContent = 'No applied v17 changelog entries yet.'; return; }
+    if (!entries.length) { host.textContent = 'No applied changelog entries yet.'; return; }
     for (const entry of entries) {
       const div = document.createElement('article'); div.className = 'admin-list-item';
       const title = document.createElement('h3'); title.textContent = entry.summary || entry.id || 'Change';
@@ -524,7 +560,7 @@ function sampleCanonicalSection(rawValue) {
   const rules = [
     ['flute/piccolo', /\b(flute|piccolo)\b/],
     ['clarinet', /\bclarinet\b/],
-    ['sax/saxophone', /\b(sax|saxophone|alto sax|tenor sax|bari sax|baritone sax)\b/],
+    ['saxophone', /\b(sax|saxophone|alto sax|tenor sax|bari sax|baritone sax)\b/],
     ['trumpet', /\b(trumpet|cornet)\b/],
     ['mellophone', /\b(mello|mellophone)\b/],
     ['trombone', /\b(trombone|bone)\b/],

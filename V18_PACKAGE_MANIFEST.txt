@@ -1,0 +1,17 @@
+YJMB Family Tree v18 patch
+
+Base: v17.7 cumulative hotfix/current v17 online-update architecture.
+
+Changes included:
+- final v18 section color palette
+- canonical Saxophone label (no Sax/Saxophone UI/code label)
+- scan/apply protected workbook migration for the legacy combined sax label
+- Add Yourself merges into one existing same-name/same-RAT-year profile instead of rejecting it
+- newly referenced missing VETs and RATs create minimal person rows/cards and reciprocal relationships
+- new v18 release notice with desktop recommendation, release summary, session dismissal, and Don't show again for v18
+- change forms explain that online updates may take a few minutes to appear
+- GitHub protected updater migrates the legacy sax label before rebuilding/deploying the site
+- public-repository verifier rejects tracked Markdown files other than root README.md
+- PowerShell cleanup helper stages removal of tracked Markdown files other than root README.md
+
+This patch contains no workbook, plaintext tree data, access secrets, encryption keys, or Markdown documentation files.

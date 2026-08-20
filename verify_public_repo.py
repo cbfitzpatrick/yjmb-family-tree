@@ -132,8 +132,10 @@ def main() -> int:
             bad_tracked.append(str(path))
         elif len(path.parts) >= 3 and path.parts[:3] == ("docs", "assets", "cards"):
             bad_tracked.append(str(path))
+        elif path.suffix.lower() == ".md" and path.as_posix() != "README.md":
+            bad_tracked.append(str(path))
     if bad_tracked:
-        fail("Privacy-sensitive files are tracked by Git:\n  " + "\n  ".join(sorted(bad_tracked)))
+        fail("Files that must not be tracked by the public repository are present (including Markdown other than README.md):\n  " + "\n  ".join(sorted(bad_tracked)))
 
     ensure_local_secrets_not_tracked()
 
@@ -143,7 +145,7 @@ def main() -> int:
     print("  - no public name-bearing docs/assets/cards directory")
     print("  - no public access-answer fingerprints or answer-derived key wraps")
     print("  - no local cryptographic/developer export secret value found in tracked text files")
-    if tracked_files(): print("  - no workbook/data/backups/cards/trees tracked by Git")
+    if tracked_files(): print("  - no workbook/data/backups/cards/trees or non-README Markdown tracked by Git")
     return 0
 
 

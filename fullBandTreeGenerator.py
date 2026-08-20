@@ -86,29 +86,22 @@ ACCESS_SECRETS_FILENAME = "access_secrets.json"
 
 # Order here is used by the legend only. A person's card follows the order in
 # that person's Instrument cell, as requested.
-# v17.6 section palette. Each section has one solid card color. The visual
-# "gradient" is across the ordered instruments inside each family rather than
-# within an individual card: higher instruments are lighter and lower ones are
-# progressively darker. The palette intentionally avoids red, neutrals, and
-# colors close to the Georgia Tech navy/gold year-band background.
+# v18 section palette. Each section has one solid card color. Related sections
+# remain visually grouped, while all card text stays black and readable.
 SECTION_COLORS: dict[str, str] = {
-    # Woodwinds — light-to-dark turquoise.
-    "flute/piccolo": "#B9F3E8",
-    "clarinet": "#74D9CB",
-    "sax/saxophone": "#2CB5A6",
-    # Brass — trumpet (highest) through sousaphone/tuba (lowest).
-    "trumpet": "#D6F5B8",
-    "mellophone": "#B7E88E",
-    "trombone": "#92D96B",
-    "baritone": "#68C64F",
-    "sousaphone": "#3FA23C",
-    # Percussion — pit/front ensemble lighter than battery/drumline.
-    "front ensemble": "#DCCAF5",
-    "battery": "#A684D8",
-    # Visual groups — light-to-dark orchid/violet.
-    "guard": "#F0D2F3",
-    "goldrush": "#D8A9E4",
-    "golden girl": "#BE7BD2",
+    "flute/piccolo": "#E66045",
+    "clarinet": "#FFBB99",
+    "saxophone": "#FF8000",
+    "trumpet": "#95FF80",
+    "mellophone": "#00CC66",
+    "trombone": "#99EEFF",
+    "baritone": "#26B7FF",
+    "sousaphone": "#5782D9",
+    "front ensemble": "#AA99FF",
+    "battery": "#BF73E6",
+    "guard": "#FF99DD",
+    "goldrush": "#FFF0A6",
+    "golden girl": "#FFFF00",
     "unknown": UNKNOWN_COLOR,
 }
 # Keep the legacy payload key for older clients, but make both endpoints equal
@@ -134,7 +127,7 @@ INSTRUMENT_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
         ),
     ),
     (
-        "sax/saxophone",
+        "saxophone",
         re.compile(
             r"\b(?:(?:alto|tenor|baritone|bari|soprano)\s+)?sax(?:ophone)?s?\b",
             re.I,
@@ -1215,7 +1208,7 @@ def load_people(
     if normalized_header("Favorite Tech Band Memory") not in header_keys:
         workbook.close()
         raise TreeDataError(
-            "The v17 workbook field 'Favorite Tech Band Memory' is missing. "
+            "The required workbook field 'Favorite Tech Band Memory' is missing. "
             "Run migrateWorkbookV17.py --apply first so memories cannot be silently dropped "
             "between the workbook, encrypted website data, and protected workbook export."
         )
@@ -2777,7 +2770,7 @@ def scene_to_web_data(
         )
 
     return {
-        "schemaVersion": 9,
+        "schemaVersion": 10,
         "sceneId": scene.scene_id,
         "title": scene.title,
         "width": scene.width,
@@ -2889,6 +2882,7 @@ def export_github_pages_site(
         "add-yourself.js",
         "admin.js",
         "admin-mail.js",
+        "release-notice.js",
         "rat-parent-icon.png",
         "section-leader-icon.png",
         "band-club-icon.png",
