@@ -1,7 +1,7 @@
 'use strict';
 
 (() => {
-  const RELEASE = 'v18';
+  const RELEASE = 'v18.2';
   const STORAGE_KEY = 'yjmbReleaseNoticeDismissedVersion';
   const SESSION_KEY = `yjmbReleaseNoticeSeen:${RELEASE}`;
   try {
@@ -25,16 +25,17 @@
       </div>
       <div class="release-notice-body">
         <p class="release-desktop-note"><strong>This site works best on a desktop or laptop.</strong> Phone support is available, but the full tree is easier to navigate on a larger screen.</p>
-        <h3>What changed in v18</h3>
+        <h3>What changed in v18.2</h3>
         <ul>
-          <li>Section cards use the new final color palette and the section label is now “Saxophone.”</li>
-          <li>Add Yourself can merge submitted information into an existing matching profile instead of forcing a separate correction flow.</li>
-          <li>If a submitted VET or RAT does not exist yet, the protected updater can create that person’s row/card and reciprocate the new connection automatically.</li>
-          <li>Online changes rebuild the protected tree automatically. They may take a few minutes to appear after submission.</li>
+          <li>Focused “Show tree” views retain their family connections.</li>
+          <li>Tree connectors use the stronger black-line/gray-halo treatment.</li>
+          <li>Correction-page VET/RAT additions can create and reciprocate missing people automatically.</li>
+          <li>Several darker section colors were lightly adjusted for clearer black card text.</li>
+          <li>Online changes may take a few minutes to appear after submission.</li>
         </ul>
         <div class="release-notice-actions">
           <button class="secondary-button" type="button" data-release-close>Continue</button>
-          <button class="primary-button" type="button" data-release-dismiss>Don’t show again for v18</button>
+          <button class="primary-button" type="button" data-release-dismiss>Don’t show again for v18.2</button>
         </div>
       </div>`;
     document.body.appendChild(dialog);

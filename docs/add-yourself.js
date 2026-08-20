@@ -1334,12 +1334,12 @@ function appendPreviewConnectorPath(svg, commands, width = 6) {
   filter.setAttribute('width', '120%'); filter.setAttribute('height', '120%');
   const dilate = document.createElementNS(ns, 'feMorphology');
   dilate.setAttribute('in', 'SourceAlpha'); dilate.setAttribute('operator', 'dilate');
-  dilate.setAttribute('radius', '2'); dilate.setAttribute('result', 'expanded');
+  dilate.setAttribute('radius', '4'); dilate.setAttribute('result', 'expanded');
   const ring = document.createElementNS(ns, 'feComposite');
   ring.setAttribute('in', 'expanded'); ring.setAttribute('in2', 'SourceAlpha');
   ring.setAttribute('operator', 'out'); ring.setAttribute('result', 'outlineMask');
   const flood = document.createElementNS(ns, 'feFlood');
-  flood.setAttribute('flood-color', '#808080'); flood.setAttribute('flood-opacity', '0.25');
+  flood.setAttribute('flood-color', '#808080'); flood.setAttribute('flood-opacity', '0.50');
   flood.setAttribute('result', 'outlineColor');
   const mask = document.createElementNS(ns, 'feComposite');
   mask.setAttribute('in', 'outlineColor'); mask.setAttribute('in2', 'outlineMask');

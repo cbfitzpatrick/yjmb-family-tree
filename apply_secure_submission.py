@@ -447,8 +447,13 @@ def create_person_from_relation(
         )
     name, year, section = parsed
     matches = rows_matching_person(ws, header_row, mapping, name, year)
-    if matches:
-        return matches[0] if len(matches) == 1 else None
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        raise ReviewRequired(
+            f"{role} {name} ({year}) matches multiple existing rows. "
+            "No duplicate person was created; resolve the existing identity first."
+        )
 
     given, family = split_person_name(name)
     new_row = append_style_row(ws, header_row)
@@ -476,7 +481,12 @@ def create_person_from_relation(
 def create_missing_people_from_field_changes(
     ws, header_row, source_row, mapping, rat_cols, labels, change_payload, changes
 ) -> list[int]:
-    """Create new VET/RAT rows referenced by a correction/admin patch."""
+    """Ensure every changed correction/admin VET or RAT resolves to a real row.
+
+    If no person with that name/RAT-year identity exists, create the person and
+    reciprocate the new relationship immediately.  Ambiguous existing identities
+    are held for review rather than leaving a dangling text-only relationship.
+    """
     created: list[int] = []
     if not isinstance(change_payload, list):
         return created

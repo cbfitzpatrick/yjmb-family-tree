@@ -89,16 +89,16 @@ ACCESS_SECRETS_FILENAME = "access_secrets.json"
 # v18 section palette. Each section has one solid card color. Related sections
 # remain visually grouped, while all card text stays black and readable.
 SECTION_COLORS: dict[str, str] = {
-    "flute/piccolo": "#E66045",
+    "flute/piccolo": "#EC725B",
     "clarinet": "#FFBB99",
     "saxophone": "#FF8000",
     "trumpet": "#95FF80",
-    "mellophone": "#00CC66",
+    "mellophone": "#00D188",
     "trombone": "#99EEFF",
-    "baritone": "#26B7FF",
-    "sousaphone": "#5782D9",
-    "front ensemble": "#AA99FF",
-    "battery": "#BF73E6",
+    "baritone": "#48C1FF",
+    "sousaphone": "#6586E0",
+    "front ensemble": "#B6B2FF",
+    "battery": "#C475EB",
     "guard": "#FF99DD",
     "goldrush": "#FFF0A6",
     "golden girl": "#FFFF00",
