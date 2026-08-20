@@ -1,0 +1,14 @@
+YJMB v18.1 UI-only patch (apply after the v18 patch)
+
+Changes:
+- Fresh full-tree view uses a fit-to-full-height baseline and labels it 100%.
+- Reset returns to that full-height 100% baseline.
+- +/- zoom percentages are relative to the full-height baseline.
+- Main tree connectors render as one SVG path instead of separate SVG line elements.
+- Admin tree connectors render as one SVG path.
+- Add Yourself preview connectors render as one SVG path.
+- Connector stroke is black.
+- Connector path has a 2 px medium-gray outline at 25% opacity.
+- Connector SVG layers are explicitly behind card layers.
+
+This patch intentionally contains no workbook, encrypted/plain tree payload, secrets, Markdown files, or Worker configuration.

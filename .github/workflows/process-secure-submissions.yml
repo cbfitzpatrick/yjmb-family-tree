@@ -51,6 +51,14 @@ jobs:
         env:
           MASTER_WORKBOOK_KEY_B64: ${{ secrets.MASTER_WORKBOOK_KEY_B64 }}
         run: python secure_workbook.py decrypt --input secure/master_workbook.enc --output "YJMB Trees.xlsx"
+      - name: Migrate legacy Saxophone label
+        if: steps.queue.outputs.has_files == 'true' || github.event_name == 'workflow_dispatch'
+        run: >-
+          python migrateSaxophoneLabelV18.py
+          --workbook "YJMB Trees.xlsx"
+          --apply
+          --backup-dir "${{ runner.temp }}/yjmb_v18_saxophone_backup"
+          --result sax_migration_result.json
       - name: Process encrypted submission queue
         if: steps.queue.outputs.has_files == 'true'
         env:
@@ -68,15 +76,19 @@ jobs:
 
           result_path = Path("queue_result.json")
           result = json.loads(result_path.read_text(encoding="utf-8")) if result_path.exists() else {}
-          has_applied = "true" if result.get("applied") else "false"
+          migration_path = Path("sax_migration_result.json")
+          migration = json.loads(migration_path.read_text(encoding="utf-8")) if migration_path.exists() else {}
+          migration_changed = bool(migration.get("changed"))
+          has_applied = "true" if result.get("applied") or migration_changed else "false"
           has_noop = "true" if result.get("noop") else "false"
           force_sync = os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch"
-          should_sync = "true" if result.get("applied") or result.get("noop") or force_sync else "false"
+          should_sync = "true" if result.get("applied") or result.get("noop") or migration_changed or force_sync else "false"
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
               handle.write(f"has_applied={has_applied}\n")
               handle.write(f"should_sync={should_sync}\n")
           print(f"Applied updates present: {has_applied}")
           print(f"Idempotent updates present: {has_noop}")
+          print(f"Legacy Saxophone-label migration changed workbook: {migration_changed}")
           print(f"Public tree synchronization required: {should_sync}")
           PY
       - name: Rebuild encrypted public site
@@ -120,9 +132,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python notify_review.py
-      - name: Remove queue result
+      - name: Remove temporary result files
         if: always()
-        run: rm -f queue_result.json
+        run: rm -f queue_result.json sax_migration_result.json
 
   deploy:
     needs: apply

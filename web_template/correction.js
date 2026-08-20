@@ -120,7 +120,7 @@ async function sendCorrection(changes, context) {
   status.textContent = 'Submitting protected update…';
   try {
     const payload = {
-      version: 4,
+      version: 5,
       kind: 'correction',
       personId: person.id,
       changes,
@@ -132,8 +132,8 @@ async function sendCorrection(changes, context) {
       body: JSON.stringify({ payload, turnstileToken }),
     });
     status.textContent = result.status === 'auto'
-      ? 'Update accepted. It will be applied by the protected updater and recorded in the admin changelog.'
-      : 'Update was held because the workbook updater found a structural conflict.';
+      ? 'Update accepted. The protected updater will apply it, create a missing VET/RAT card when safe, rebuild the site, and record the change in the admin changelog. Changes may take a few minutes to appear.'
+      : 'Update was held because the workbook updater found a structural conflict. If approved, changes may take a few minutes to appear.';
     button.textContent = 'Accepted';
   } catch (error) {
     console.error(error);

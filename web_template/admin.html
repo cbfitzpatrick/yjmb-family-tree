@@ -42,6 +42,7 @@
         <button class="admin-tab" type="button" data-admin-tab="changelog" aria-selected="false">Changelog / Revert</button>
       </nav>
       <p id="admin-status" class="admin-status" role="status" aria-live="polite"></p>
+      <p class="update-delay-notice">Saved online changes can take a few minutes to rebuild and appear on the live tree.</p>
 
       <section class="admin-panel" data-admin-panel="tree">
         <div class="admin-toolbar">
@@ -80,7 +81,7 @@
         <div class="admin-toolbar">
           <button id="admin-refresh-requests" class="secondary-button" type="button">Refresh requests</button>
         </div>
-        <p>Normal v17 updates go directly to the protected automatic queue. Only workbook conflicts are held for review. You can deny a still-pending automatic update before it runs, or approve/retry/deny a conflict.</p>
+        <p>Normal authenticated updates go directly to the protected automatic queue. Only workbook conflicts are held for review. You can deny a still-pending automatic update before it runs, or approve/retry/deny a conflict.</p>
         <div id="admin-request-list" class="admin-list"></div>
       </section>
 

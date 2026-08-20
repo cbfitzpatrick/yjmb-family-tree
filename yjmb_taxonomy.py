@@ -23,7 +23,7 @@ def key(value: object) -> str:
 SECTION_DISPLAY = {
     "flute/piccolo": "Flute/Piccolo",
     "clarinet": "Clarinet",
-    "sax/saxophone": "Sax/Saxophone",
+    "saxophone": "Saxophone",
     "trumpet": "Trumpet",
     "mellophone": "Mellophone",
     "trombone": "Trombone",
@@ -44,7 +44,7 @@ SECTION_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("goldrush", re.compile(r"\bgold\s*rush\b|\bgoldrush\b", re.I)),
     ("guard", re.compile(r"\bcolor\s*guard\b|\bcolour\s*guard\b|\bcolorguard\b|\bguard\b|\bflags?\b|\brifles?\b|\bsab(?:er|re)s?\b", re.I)),
     ("battery", re.compile(r"\bbattery\b|\bdrum\s*line\b|\bdrumline\b|\bsnares?\b|\btenors\b|\btenor\s+drums?\b|\bquads?\b|\bquints?\b|\bbass\s+drums?\b|\bcymbals?\b", re.I)),
-    ("sax/saxophone", re.compile(r"\b(?:(?:alto|tenor|baritone|bari|soprano)\s+)?sax(?:ophone)?s?\b", re.I)),
+    ("saxophone", re.compile(r"\b(?:(?:alto|tenor|baritone|bari|soprano)\s+)?sax(?:ophone)?s?\b", re.I)),
     ("flute/piccolo", re.compile(r"\bflutes?\b|\bpiccolos?\b", re.I)),
     ("clarinet", re.compile(r"\b(?:bass\s+)?clarinets?\b", re.I)),
     ("trumpet", re.compile(r"\btrumpets?\b|\bhorns?\b(?=\s*(?:,|/|;|$))", re.I)),
@@ -61,10 +61,10 @@ SECTION_DETAIL_PATTERNS: tuple[tuple[str, str, re.Pattern[str]], ...] = (
     ("flute/piccolo", "Flute", re.compile(r"\bflutes?\b", re.I)),
     ("flute/piccolo", "Piccolo", re.compile(r"\bpiccolos?\b", re.I)),
     ("clarinet", "Bass Clarinet", re.compile(r"\bbass\s+clarinets?\b", re.I)),
-    ("sax/saxophone", "Alto Saxophone", re.compile(r"\balto(?:\s+sax(?:ophone)?s?)?\b", re.I)),
-    ("sax/saxophone", "Tenor Saxophone", re.compile(r"\btenor(?:\s+sax(?:ophone)?s?)?\b", re.I)),
-    ("sax/saxophone", "Baritone Saxophone", re.compile(r"\b(?:baritone|bari)(?:\s+sax(?:ophone)?s?)?\b", re.I)),
-    ("sax/saxophone", "Soprano Saxophone", re.compile(r"\bsoprano(?:\s+sax(?:ophone)?s?)?\b", re.I)),
+    ("saxophone", "Alto Saxophone", re.compile(r"\balto(?:\s+sax(?:ophone)?s?)?\b", re.I)),
+    ("saxophone", "Tenor Saxophone", re.compile(r"\btenor(?:\s+sax(?:ophone)?s?)?\b", re.I)),
+    ("saxophone", "Baritone Saxophone", re.compile(r"\b(?:baritone|bari)(?:\s+sax(?:ophone)?s?)?\b", re.I)),
+    ("saxophone", "Soprano Saxophone", re.compile(r"\bsoprano(?:\s+sax(?:ophone)?s?)?\b", re.I)),
     ("baritone", "Euphonium", re.compile(r"\beuphoniums?\b|\beuphs?\b", re.I)),
     ("sousaphone", "Tuba", re.compile(r"\btubas?\b", re.I)),
     ("battery", "Snare", re.compile(r"\bsnares?\b", re.I)),
@@ -139,7 +139,7 @@ def canonical_section_text_with_details(text: object) -> str | None:
     """Canonicalize broad section names without throwing away known details.
 
     Examples:
-      Alto Sax -> Sax/Saxophone — Alto Saxophone
+      Alto Sax -> Saxophone — Alto Saxophone
       Snare -> Battery — Snare
       Color Guard / Rifle -> Guard — Rifle
     """

@@ -52,7 +52,7 @@ function fullSubmittedName() {
 function sectionLabel(section) {
   const fixed = {
     'flute/piccolo': 'Flute/Piccolo',
-    'sax/saxophone': 'Sax/Saxophone',
+    'saxophone': 'Saxophone',
     'battery': 'Battery/Drumline',
     'front ensemble': 'Front Ensemble/Pit',
     'golden girl': 'Golden Girl',
@@ -174,7 +174,7 @@ function updateSectionMembershipRow(row) {
   } else if (section === 'battery') {
     label.textContent = 'What instrument did you play in Battery/Drumline?';
     instrumentInput.placeholder = 'e.g., snare, tenors/quads, bass drum, cymbals';
-  } else if (section === 'sax/saxophone') {
+  } else if (section === 'saxophone') {
     label.textContent = 'Which saxophone/subsection? (optional)';
     instrumentInput.placeholder = 'e.g., alto, tenor, bari, soprano';
   } else if (section === 'guard') {
@@ -711,7 +711,7 @@ function updateExistingSelfWarning() {
     panel.hidden = true;
     return;
   }
-  panel.innerHTML = `A record for <strong>${escapeHtml(match.name)}</strong> (${escapeHtml(match.ratYearLabel)}) already exists. If this is you, use the correction link on your existing profile instead of submitting a duplicate.`;
+  panel.innerHTML = `A record for <strong>${escapeHtml(match.name)}</strong> (${escapeHtml(match.ratYearLabel)}) already exists. If this is you, your Add Yourself submission will merge into that existing profile instead of creating a duplicate row.`;
   panel.hidden = false;
 }
 
@@ -1048,8 +1048,9 @@ function proposedSubmission() {
     if (checkbox.checked && textarea.value.trim()) notes[target.dataset.targetKey] = textarea.value.trim();
   }
   return {
-    version: 4,
+    version: 5,
     submittedAt: new Date().toISOString(),
+    existingPersonId: exactExistingPerson(fullSubmittedName(), q('#self-rat-year').value, primarySection())?.id || null,
     self: {
       givenPreferredName: q('#self-given').value.trim(),
       hasNickname: radioValue('has-nickname') === 'yes',
@@ -1163,6 +1164,7 @@ function proposedGraph() {
   const connectedRoots = new Set();
 
   const relationIds = [];
+  if (submission.existingPersonId) relationIds.push(submission.existingPersonId);
   if (submission.vet?.matchedId) relationIds.push(submission.vet.matchedId);
   for (const rat of submission.rats) if (rat.matchedId) relationIds.push(rat.matchedId);
   for (const id of relationIds) {
@@ -1171,19 +1173,16 @@ function proposedGraph() {
   }
   for (const rootId of connectedRoots) collectExistingTreeNodes(rootId, nodes);
 
-  const selfId = 'proposed-self';
-  const selfNode = {
-    id: selfId,
-    name: treeCardName(),
-    year: submission.self.ratYear,
-    section: submission.self.section,
-    sections: submission.self.sections.map((entry) => entry.section),
-    parentId: null,
-    existing: false,
-    role: 'self',
-    currentlyRat: Boolean(submission.self.currentlyRat),
-    bandClubLeadership: Boolean(submission.self.bandClubLeadership),
-  };
+  const existingSelf = submission.existingPersonId ? state.people.get(submission.existingPersonId) : null;
+  const selfId = existingSelf?.id || 'proposed-self';
+  const selfNode = existingSelf ? canonicalNodeFromPerson(existingSelf) : { id: selfId, parentId: null, existing: false };
+  selfNode.name = treeCardName();
+  selfNode.year = submission.self.ratYear;
+  selfNode.section = submission.self.section;
+  selfNode.sections = submission.self.sections.map((entry) => entry.section);
+  selfNode.role = 'self';
+  selfNode.currentlyRat = Boolean(submission.self.currentlyRat) || Boolean(selfNode.currentlyRat);
+  selfNode.bandClubLeadership = Boolean(submission.self.bandClubLeadership) || Boolean(selfNode.bandClubLeadership);
   nodes.set(selfId, selfNode);
 
   if (submission.pairSystem.applies && submission.vet) {
@@ -1321,16 +1320,51 @@ function sectionGradient(sections) {
   return `linear-gradient(90deg, ${stops.join(', ')})`;
 }
 
-function line(svg, x1, y1, x2, y2, width = 6) {
-  const el = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-  el.setAttribute('x1', x1);
-  el.setAttribute('y1', y1);
-  el.setAttribute('x2', x2);
-  el.setAttribute('y2', y2);
-  el.setAttribute('stroke', '#777777');
-  el.setAttribute('stroke-width', width);
-  el.setAttribute('stroke-linecap', 'square');
-  svg.appendChild(el);
+function addPreviewConnectorSegment(commands, x1, y1, x2, y2) {
+  commands.push(`M ${x1} ${y1} L ${x2} ${y2}`);
+}
+
+function appendPreviewConnectorPath(svg, commands, width = 6) {
+  if (!commands.length) return;
+  const ns = 'http://www.w3.org/2000/svg';
+  const defs = document.createElementNS(ns, 'defs');
+  const filter = document.createElementNS(ns, 'filter');
+  filter.id = 'preview-connector-outline-filter';
+  filter.setAttribute('x', '-10%'); filter.setAttribute('y', '-10%');
+  filter.setAttribute('width', '120%'); filter.setAttribute('height', '120%');
+  const dilate = document.createElementNS(ns, 'feMorphology');
+  dilate.setAttribute('in', 'SourceAlpha'); dilate.setAttribute('operator', 'dilate');
+  dilate.setAttribute('radius', '2'); dilate.setAttribute('result', 'expanded');
+  const ring = document.createElementNS(ns, 'feComposite');
+  ring.setAttribute('in', 'expanded'); ring.setAttribute('in2', 'SourceAlpha');
+  ring.setAttribute('operator', 'out'); ring.setAttribute('result', 'outlineMask');
+  const flood = document.createElementNS(ns, 'feFlood');
+  flood.setAttribute('flood-color', '#808080'); flood.setAttribute('flood-opacity', '0.25');
+  flood.setAttribute('result', 'outlineColor');
+  const mask = document.createElementNS(ns, 'feComposite');
+  mask.setAttribute('in', 'outlineColor'); mask.setAttribute('in2', 'outlineMask');
+  mask.setAttribute('operator', 'in'); mask.setAttribute('result', 'outline');
+  const merge = document.createElementNS(ns, 'feMerge');
+  const outlineNode = document.createElementNS(ns, 'feMergeNode'); outlineNode.setAttribute('in', 'outline');
+  const sourceNode = document.createElementNS(ns, 'feMergeNode'); sourceNode.setAttribute('in', 'SourceGraphic');
+  merge.append(outlineNode, sourceNode);
+  filter.append(dilate, ring, flood, mask, merge); defs.appendChild(filter); svg.appendChild(defs);
+
+  const path = document.createElementNS(ns, 'path');
+  path.setAttribute('d', commands.join(' '));
+  path.setAttribute('fill', 'none');
+  path.setAttribute('stroke', '#000000');
+  path.setAttribute('stroke-width', String(width));
+  path.setAttribute('stroke-linecap', 'square');
+  path.setAttribute('stroke-linejoin', 'miter');
+  path.setAttribute('filter', 'url(#preview-connector-outline-filter)');
+  svg.appendChild(path);
+}
+
+function submissionMergeDescription() {
+  const duplicate = exactExistingPerson(fullSubmittedName(), q('#self-rat-year').value, primarySection());
+  if (duplicate) return 'Your existing profile is shown in its current family tree. New people/relationships you entered use dashed outlines and will be merged into that profile.';
+  return 'Existing cards come from the current tree. Cards with a dashed outline are the new people/relationships you entered.';
 }
 
 function renderPreview() {
@@ -1366,6 +1400,7 @@ function renderPreview() {
   svg.setAttribute('viewBox', `0 0 ${layout.width} ${layout.height}`);
   stage.appendChild(svg);
 
+  const connectorCommands = [];
   for (const parent of graph.nodes.values()) {
     const children = (parent.children || []).map((id) => graph.nodes.get(id)).filter(Boolean).sort(nodeOrder);
     if (!children.length) continue;
@@ -1376,15 +1411,16 @@ function renderPreview() {
       y: layout.y.get(child.id) + 1,
     }));
     if (children.length === 1 && childPoints[0].x === px) {
-      line(svg, px, py, childPoints[0].x, childPoints[0].y);
+      addPreviewConnectorSegment(connectorCommands, px, py, childPoints[0].x, childPoints[0].y);
     } else {
       const nearestY = Math.min(...childPoints.map((point) => point.y));
       const junctionY = py + Math.max(10, Math.floor((nearestY - py) / 2));
-      line(svg, px, py, px, junctionY);
-      line(svg, Math.min(...childPoints.map((point) => point.x)), junctionY, Math.max(...childPoints.map((point) => point.x)), junctionY);
-      childPoints.forEach((point) => line(svg, point.x, junctionY, point.x, point.y));
+      addPreviewConnectorSegment(connectorCommands, px, py, px, junctionY);
+      addPreviewConnectorSegment(connectorCommands, Math.min(...childPoints.map((point) => point.x)), junctionY, Math.max(...childPoints.map((point) => point.x)), junctionY);
+      childPoints.forEach((point) => addPreviewConnectorSegment(connectorCommands, point.x, junctionY, point.x, point.y));
     }
   }
+  appendPreviewConnectorPath(svg, connectorCommands);
 
   for (const node of graph.nodes.values()) {
     const card = document.createElement('div');
@@ -1409,7 +1445,7 @@ function renderPreview() {
   const description = q('#preview-description');
   if (state.previewConnectedToExisting) {
     question.textContent = 'I connected you to a larger tree. Does this look right?';
-    description.textContent = 'Existing cards come from the current tree. Cards with a dashed outline are the new people/relationships you entered.';
+    description.textContent = submissionMergeDescription();
   } else {
     question.textContent = 'Does this look right?';
     description.textContent = 'This preview contains the people and relationships you entered. Cards with a dashed outline are new entries.';
@@ -1418,7 +1454,7 @@ function renderPreview() {
   const duplicate = exactExistingPerson(fullSubmittedName(), q('#self-rat-year').value, primarySection());
   const warning = q('#preview-warning');
   if (duplicate) {
-    warning.innerHTML = `A record for <strong>${escapeHtml(duplicate.name)}</strong> (${escapeHtml(duplicate.ratYearLabel)}) already exists. Submitting another copy will be rejected by the database updater; use the correction page if this is the same person.`;
+    warning.innerHTML = `A record for <strong>${escapeHtml(duplicate.name)}</strong> (${escapeHtml(duplicate.ratYearLabel)}) already exists. This preview represents information that will be merged into the existing profile rather than creating a duplicate card.`;
     warning.hidden = false;
   } else {
     warning.hidden = true;
@@ -1474,7 +1510,7 @@ function renderSubmissionSummary() {
     summaryRow('Favorite Tech Band Memory', data.favoriteTechBandMemory || 'No memory entered'),
   ].join('');
 
-  q('#submission-github-note').innerHTML = 'Your authenticated submission is placed in the protected update queue after required-field and abuse checks. <strong>Normal member updates do not wait for administrator approval in v17.</strong> Every applied change is recorded in the protected admin changelog so it can be reviewed and reverted if needed.';
+  q('#submission-github-note').innerHTML = 'Your authenticated submission is placed in the protected update queue after required-field and abuse checks. <strong>If your profile already exists, the submitted information is merged into that profile instead of creating a duplicate.</strong> New VETs/RATs that do not exist yet can be created automatically. Every applied change is recorded in the protected admin changelog. Changes may take a few minutes to appear on the live tree.';
 }
 
 function renderTurnstile() {
@@ -1519,7 +1555,7 @@ function buildIssueBody(payload) {
     `**Currently a RAT:** ${payload.self.currentlyRat ? 'Yes' : 'No'}`,
     `**RAT/VET system applies:** ${payload.pairSystem.applies ? 'Yes' : 'No'}`,
     '',
-    '> Naming a VET or RAT records the submitter’s relationship claim. It does not silently rewrite the other person’s profile; unreciprocated claims are surfaced in Admin mode for validation.',
+    '> If a submitted VET or RAT does not yet exist, the protected updater can create that person’s row/card and reciprocate the new relationship. Existing related profiles are not silently overwritten.',
   ];
   if (payload.self.marriedName) lines.push(`**Married name:** ${payload.self.marriedName}`);
   if (payload.vet) lines.push(`**VET:** ${payload.vet.name} (${payload.vet.year}, ${sectionLabel(payload.vet.section)})`);
@@ -1548,11 +1584,8 @@ async function submitRequest() {
   clearStatus();
   if (!validateStep1() || !validateStep2() || !validateStep4()) return;
   const duplicate = exactExistingPerson(fullSubmittedName(), q('#self-rat-year').value, primarySection());
-  if (duplicate) {
-    showStatus(`A matching record already exists for ${duplicate.name} (${duplicate.ratYearLabel}). Use the correction page on that profile instead of creating a duplicate.`);
-    return;
-  }
   const payload = proposedSubmission();
+  if (duplicate) payload.existingPersonId = duplicate.id;
   const button = q('#submit-tree-request');
   button.disabled = true;
   showStatus('Checking the authenticated submission and abuse safeguards…', 'info');
@@ -1562,10 +1595,10 @@ async function submitRequest() {
       body: JSON.stringify({ payload, turnstileToken: state.turnstileToken || '' }),
     });
     if (result.status === 'auto') {
-      showStatus('Submission accepted for the automatic protected update workflow. Every applied change is logged for administrator review/revert.', 'info');
+      showStatus('Submission accepted. The protected updater will merge it into an existing matching profile when appropriate, create missing VET/RAT rows when safe, and rebuild the live tree. Changes may take a few minutes to appear.', 'info');
       button.textContent = 'Accepted';
     } else {
-      showStatus('The protected updater found a structural conflict and held this submission for administrator review.', 'info');
+      showStatus('The protected updater found a structural conflict and held this submission for administrator review. Changes that are approved may take a few minutes to appear.', 'info');
       button.textContent = 'Held for review';
     }
     button.disabled = true;

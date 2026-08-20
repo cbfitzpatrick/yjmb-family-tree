@@ -9,6 +9,7 @@ const state = {
   trees: new Map(),
   rootByPerson: new Map(),
   scale: 1,
+  baseScale: 1,
   focusedRootId: null,
   selectedSections: new Set(),
   appliedSections: new Set(),
@@ -33,7 +34,7 @@ const status = q('#status');
 
 const SPECIAL_SECTION_BLUE = '#d5defe';
 const PACKED_TREE_GAP = 28;
-const TREE_VIEW_STORAGE_KEY = 'yjmbTreeViewV17_6';
+const TREE_VIEW_STORAGE_KEY = 'yjmbTreeViewV18_1';
 const MOBILE_TREE_MEDIA = '(max-width: 820px), (pointer: coarse) and (max-width: 950px)';
 const ASSET_RELOAD_FILES = ['styles.css', 'app.js', 'secure-data.js', 'developer-export.js', 'admin-mail.js', 'section-leader-icon.png', 'rat-parent-icon.png', 'band-club-icon.png'];
 
@@ -41,17 +42,71 @@ function normalizeSearch(value) {
   return String(value ?? '').normalize('NFKD').toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
-function svgLine(segment, color, width) {
-  const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-  line.setAttribute('x1', segment.start.x);
-  line.setAttribute('y1', segment.start.y);
-  line.setAttribute('x2', segment.end.x);
-  line.setAttribute('y2', segment.end.y);
-  line.setAttribute('stroke', color);
-  line.setAttribute('stroke-width', width);
-  line.setAttribute('stroke-linecap', 'square');
-  line.setAttribute('shape-rendering', 'crispEdges');
-  return line;
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const CONNECTOR_STROKE = '#000000';
+const CONNECTOR_OUTLINE_COLOR = '#808080';
+const CONNECTOR_OUTLINE_OPACITY = 0.25;
+const CONNECTOR_OUTLINE_RADIUS = 2;
+
+function connectorSegments(connector) {
+  return [connector.parentStem, ...(connector.siblingBus ? [connector.siblingBus] : []), ...(connector.childStems || [])].filter(Boolean);
+}
+
+function connectorPathData(data, allowedRootIds = null) {
+  const commands = [];
+  for (const connector of data.connectors || []) {
+    const rootId = state.rootByPerson.get(connector.parentId) || '';
+    if (allowedRootIds && !allowedRootIds.has(rootId)) continue;
+    const dx = state.rootShiftX.get(rootId) || 0;
+    for (const segment of connectorSegments(connector)) {
+      commands.push(`M ${segment.start.x + dx} ${segment.start.y} L ${segment.end.x + dx} ${segment.end.y}`);
+    }
+  }
+  return commands.join(' ');
+}
+
+function appendConnectorOutlineFilter(svg) {
+  const defs = document.createElementNS(SVG_NS, 'defs');
+  const filter = document.createElementNS(SVG_NS, 'filter');
+  filter.id = 'connector-outline-filter';
+  filter.setAttribute('x', '-10%');
+  filter.setAttribute('y', '-10%');
+  filter.setAttribute('width', '120%');
+  filter.setAttribute('height', '120%');
+
+  const dilate = document.createElementNS(SVG_NS, 'feMorphology');
+  dilate.setAttribute('in', 'SourceAlpha');
+  dilate.setAttribute('operator', 'dilate');
+  dilate.setAttribute('radius', String(CONNECTOR_OUTLINE_RADIUS));
+  dilate.setAttribute('result', 'expanded');
+
+  const ring = document.createElementNS(SVG_NS, 'feComposite');
+  ring.setAttribute('in', 'expanded');
+  ring.setAttribute('in2', 'SourceAlpha');
+  ring.setAttribute('operator', 'out');
+  ring.setAttribute('result', 'outlineMask');
+
+  const flood = document.createElementNS(SVG_NS, 'feFlood');
+  flood.setAttribute('flood-color', CONNECTOR_OUTLINE_COLOR);
+  flood.setAttribute('flood-opacity', String(CONNECTOR_OUTLINE_OPACITY));
+  flood.setAttribute('result', 'outlineColor');
+
+  const mask = document.createElementNS(SVG_NS, 'feComposite');
+  mask.setAttribute('in', 'outlineColor');
+  mask.setAttribute('in2', 'outlineMask');
+  mask.setAttribute('operator', 'in');
+  mask.setAttribute('result', 'outline');
+
+  const merge = document.createElementNS(SVG_NS, 'feMerge');
+  const outlineNode = document.createElementNS(SVG_NS, 'feMergeNode');
+  outlineNode.setAttribute('in', 'outline');
+  const sourceNode = document.createElementNS(SVG_NS, 'feMergeNode');
+  sourceNode.setAttribute('in', 'SourceGraphic');
+  merge.append(outlineNode, sourceNode);
+
+  filter.append(dilate, ring, flood, mask, merge);
+  defs.appendChild(filter);
+  svg.appendChild(defs);
 }
 
 function renderBands(data) {
@@ -158,20 +213,24 @@ function buildTreeIndexes(data) {
   }
 }
 
-function renderConnectors(data) {
+function renderConnectors(data, allowedRootIds = null) {
   connectorSvg.replaceChildren();
   connectorSvg.setAttribute('height', data.height);
-  for (const connector of data.connectors || []) {
-    const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    group.classList.add('connector-group');
-    group.dataset.parentId = connector.parentId;
-    group.dataset.rootId = state.rootByPerson.get(connector.parentId) || '';
-    const segments = [connector.parentStem, ...(connector.siblingBus ? [connector.siblingBus] : []), ...(connector.childStems || [])];
-    for (const segment of segments) {
-      group.appendChild(svgLine(segment, '#777777', data.connectorWidth || 9));
-    }
-    connectorSvg.appendChild(group);
-  }
+  appendConnectorOutlineFilter(connectorSvg);
+
+  const d = connectorPathData(data, allowedRootIds);
+  if (!d) return;
+  const path = document.createElementNS(SVG_NS, 'path');
+  path.classList.add('connector-path');
+  path.setAttribute('d', d);
+  path.setAttribute('fill', 'none');
+  path.setAttribute('stroke', CONNECTOR_STROKE);
+  path.setAttribute('stroke-width', String(data.connectorWidth || 9));
+  path.setAttribute('stroke-linecap', 'square');
+  path.setAttribute('stroke-linejoin', 'miter');
+  path.setAttribute('shape-rendering', 'geometricPrecision');
+  path.setAttribute('filter', 'url(#connector-outline-filter)');
+  connectorSvg.appendChild(path);
 }
 
 function gradientPairForSection(section) {
@@ -349,10 +408,10 @@ function applyDisplayPositions() {
     button.style.top = `${person.card.y}px`;
     q('.site-card', button).style.background = sectionViewCardBackground(person);
   }
-  for (const group of qa('.connector-group')) {
-    const dx = state.rootShiftX.get(group.dataset.rootId) || 0;
-    group.setAttribute('transform', dx ? `translate(${dx} 0)` : '');
-  }
+  // v18.1 renders every visible relationship segment as one SVG path, so
+  // packed-family x offsets are baked into the path rather than applied to
+  // many independent connector elements.
+  renderConnectors(state.data);
   renderYearAxis();
 }
 
@@ -387,18 +446,47 @@ function captureViewportFocus() {
   return { anchorX, anchorY, logicalX, logicalY };
 }
 
+function fullHeightBaseScale() {
+  if (!state.data || !viewport) return 1;
+  const availableHeight = Math.max(1, viewport.clientHeight - 4);
+  return Math.min(1, Math.max(0.02, availableHeight / Math.max(1, state.data.height)));
+}
+
+function zoomPercent() {
+  return Math.max(100, (state.scale / Math.max(state.baseScale, 0.0001)) * 100);
+}
+
 function setScale(next, { preserveFocus = true } = {}) {
   if (!state.data) return;
   const focus = preserveFocus ? captureViewportFocus() : null;
-  state.scale = Math.max(.12, Math.min(3, next));
+  const minimum = Math.max(0.02, state.baseScale || fullHeightBaseScale());
+  const maximum = Math.max(minimum, Math.min(3, minimum * 12));
+  state.scale = Math.max(minimum, Math.min(maximum, next));
   stage.style.transform = `scale(${state.scale})`;
-  q('#zoom-label').textContent = `${Math.round(state.scale * 100)}%`;
+  q('#zoom-label').textContent = `${Math.round(zoomPercent())}%`;
   renderYearAxis();
   if (focus) {
     viewport.scrollLeft = Math.max(0, state.contentOffsetX + focus.logicalX * state.scale - focus.anchorX);
     viewport.scrollTop = Math.max(0, focus.logicalY * state.scale - focus.anchorY);
     syncYearAxisScroll();
   }
+}
+
+function resetZoomToFullHeight() {
+  if (!state.data) return;
+  state.baseScale = fullHeightBaseScale();
+  setScale(state.baseScale, { preserveFocus: false });
+  viewport.scrollTop = 0;
+  viewport.scrollLeft = 0;
+  syncYearAxisScroll();
+}
+
+function refreshBaseScaleForViewport() {
+  if (!state.data || viewport.hidden) return;
+  const oldBase = Math.max(0.0001, state.baseScale || 1);
+  const relativeZoom = Math.max(1, state.scale / oldBase);
+  state.baseScale = fullHeightBaseScale();
+  setScale(state.baseScale * relativeZoom);
 }
 
 function treeMatchesSections(tree) {
@@ -426,7 +514,7 @@ function applyVisibility({ fit = false } = {}) {
   }
 
   for (const button of qa('.card-button')) button.classList.toggle('is-hidden', !state.visiblePeople.has(button.dataset.personId));
-  for (const group of qa('.connector-group')) group.classList.toggle('is-hidden', !roots.has(group.dataset.rootId));
+  renderConnectors(state.data, roots);
 
   const summary = q('#filter-summary');
   if (state.focusedRootId) {
@@ -796,7 +884,7 @@ function fitVisible() {
   const width = Math.max(1, bounds.maxX - bounds.minX + padding * 2);
   const height = Math.max(1, bounds.maxY - bounds.minY + padding * 2);
   const availableWidth = Math.max(120, viewport.clientWidth - state.yearAxisWidth - 18);
-  const scale = Math.min(1.45, Math.max(.12, availableWidth / width), Math.max(.12, (viewport.clientHeight - 24) / height));
+  const scale = Math.min(1.45, availableWidth / width, (viewport.clientHeight - 24) / height);
   setScale(scale, { preserveFocus: false });
   viewport.scrollLeft = Math.max(0, state.contentOffsetX + (bounds.minX - padding) * state.scale - state.yearAxisWidth);
   viewport.scrollTop = Math.max(0, (bounds.minY - padding) * state.scale);
@@ -824,6 +912,7 @@ function saveTreeView() {
     localStorage.setItem(TREE_VIEW_STORAGE_KEY, JSON.stringify({
       schemaVersion: state.data.schemaVersion || null,
       scale: state.scale,
+      zoomPercent: zoomPercent(),
       scrollLeft: viewport.scrollLeft,
       scrollTop: viewport.scrollTop,
       selectedPersonId: state.selectedPersonId,
@@ -865,8 +954,9 @@ function restoreTreeView() {
   }
   state.focusedRootId = saved.focusedRootId && state.trees.has(saved.focusedRootId) ? saved.focusedRootId : null;
   applyVisibility();
-  const scale = Number(saved.scale);
-  setScale(Number.isFinite(scale) ? scale : 1, { preserveFocus: false });
+  const savedPercent = Number(saved.zoomPercent);
+  const relativeZoom = Number.isFinite(savedPercent) ? Math.max(100, savedPercent) / 100 : 1;
+  setScale(state.baseScale * relativeZoom, { preserveFocus: false });
   requestAnimationFrame(() => {
     viewport.scrollLeft = Math.max(0, Number(saved.scrollLeft) || 0);
     viewport.scrollTop = Math.max(0, Number(saved.scrollTop) || 0);
@@ -958,8 +1048,11 @@ async function main() {
     renderSectionFilter();
     status.hidden = true;
     viewport.hidden = false;
+    state.baseScale = fullHeightBaseScale();
     if (!restoreTreeView()) {
-      setScale(isMobileTree() ? 0.8 : 1, { preserveFocus: false });
+      setScale(state.baseScale, { preserveFocus: false });
+      viewport.scrollLeft = 0;
+      viewport.scrollTop = 0;
       applyVisibility();
     }
     if (isMobileTree()) setMobileToolbarVisible(false);
@@ -973,14 +1066,14 @@ async function main() {
 
 q('#zoom-in').addEventListener('click', () => setScale(state.scale * 1.15));
 q('#zoom-out').addEventListener('click', () => setScale(state.scale / 1.15));
-q('#zoom-reset').addEventListener('click', () => setScale(1));
+q('#zoom-reset').addEventListener('click', resetZoomToFullHeight);
 q('#zoom-fit')?.addEventListener('click', fitVisible);
 q('#reload-assets')?.addEventListener('click', reloadPageAssets);
 bindMobileToolbarToggle();
 viewport.addEventListener('scroll', syncYearAxisScroll, { passive: true });
 window.addEventListener('pagehide', saveTreeView);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveTreeView(); });
-window.addEventListener('resize', () => { if (!isMobileTree()) setMobileToolbarVisible(true); syncYearAxisGeometry(); renderYearAxis(); }, { passive: true });
+window.addEventListener('resize', () => { if (!isMobileTree()) setMobileToolbarVisible(true); refreshBaseScaleForViewport(); syncYearAxisGeometry(); }, { passive: true });
 q('#search').addEventListener('input', updateSearchResults);
 q('#search').addEventListener('keydown', (event) => {
   if (event.key === 'Enter') {

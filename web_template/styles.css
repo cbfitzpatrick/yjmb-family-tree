@@ -1323,3 +1323,62 @@ button:disabled { cursor: wait; opacity: .65; }
   }
   .admin-sample-fields, .admin-sample-workbench { grid-template-columns: 1fr; }
 }
+
+/* --- v18 release notice and online-update timing --- */
+.release-notice-dialog {
+  width: min(650px, calc(100vw - 28px));
+  max-height: min(84dvh, 760px);
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #a1a1aa;
+  border-radius: 14px;
+  background: #fff;
+  color: #111827;
+  box-shadow: 0 24px 70px rgba(0,0,0,.32);
+}
+.release-notice-dialog::backdrop { background: rgba(0,0,0,.5); }
+.release-notice-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 18px 20px 13px;
+  border-bottom: 1px solid #e4e4e7;
+}
+.release-notice-header h2 { margin: 0; }
+.release-notice-body { padding: 16px 20px 20px; overflow-y: auto; line-height: 1.5; }
+.release-notice-body h3 { margin: 16px 0 6px; }
+.release-notice-body ul { margin: 6px 0 18px; padding-left: 22px; }
+.release-notice-body li + li { margin-top: 7px; }
+.release-desktop-note {
+  margin: 0;
+  padding: 11px 13px;
+  border-radius: 10px;
+  background: #f4f4f5;
+  border: 1px solid #d4d4d8;
+}
+.release-notice-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 10px; }
+.update-delay-notice {
+  margin: 12px 0;
+  padding: 10px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 14px;
+}
+@media (max-width: 640px) {
+  .release-notice-dialog { width: calc(100vw - 16px); max-height: 90dvh; }
+  .release-notice-header { padding: 15px 14px 11px; }
+  .release-notice-body { padding: 14px; }
+  .release-notice-actions { display: grid; grid-template-columns: 1fr; }
+}
+
+/* --- v18.1 unified connector layer --- */
+/* The complete visible relationship network is rendered as one SVG path. */
+.bands { z-index: 1; }
+.connectors { z-index: 2; }
+.cards { z-index: 3; }
+.connector-path { pointer-events: none; }
+.admin-tree-connectors { z-index: 1; }
+.admin-tree-cards { z-index: 2; }

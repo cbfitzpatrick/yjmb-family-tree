@@ -10,7 +10,7 @@
   <nav class="data-entry-nav"><a class="back-link" href="tree.html">← Back to family tree</a></nav>
   <header class="correction-header">
     <h1>Correct tree details</h1>
-    <p>Update any incorrect fields. In v17, ordinary authenticated corrections enter the protected automatic update workflow and every applied cell change is recorded in the administrator changelog for review and safe revert.</p>
+    <p>Update any incorrect fields. Authenticated corrections enter the protected automatic update workflow and every applied cell change is recorded in the administrator changelog for review and safe revert.</p>
   </header>
 
   <main class="correction-main">
@@ -30,7 +30,8 @@
         <textarea id="correction-context" rows="5" placeholder="Explain anything that is not obvious from the edited fields."></textarea>
       </label>
 
-      <p class="form-guidance">Relationship edits are recorded from this profile's side first. Admin mode surfaces any unreciprocated VET/RAT connection so the other side can be validated instead of being silently overwritten.</p>
+      <p class="form-guidance">If you list a VET or RAT who is not yet in the directory, the protected updater can create that person's row/card and reciprocate the new connection automatically. Existing related profiles are not silently overwritten.</p>
+      <p class="update-delay-notice">Changes are processed automatically and may take a few minutes to appear on the live tree.</p>
       <div id="turnstile-container" class="turnstile-container" aria-label="Abuse-prevention verification"></div>
 
       <div class="correction-actions">
@@ -45,6 +46,7 @@
   <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
   <script src="secure-data.js"></script>
   <script src="admin-mail.js"></script>
+  <script src="release-notice.js"></script>
   <script src="correction.js"></script>
 </body>
 </html>

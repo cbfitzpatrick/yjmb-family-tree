@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 """Apply one decrypted protected YJMB update to the authoritative workbook.
 
-v17 rules:
+v18 rules:
 - Normal authenticated additions/corrections apply without an admin approval step.
-- A user's VET/RAT claims change only that user's row. Reciprocal edits are a
-  separate admin validation action. When a person's canonical relationship
-  identity (name, RAT year, or Instrument/Section) changes, relationship cells
+- Add Yourself merges into a unique existing same-name/same-year profile instead
+  of creating a duplicate. Newly referenced VETs/RATs are created as rows/cards
+  and reciprocated when they do not already exist. Existing related profiles are
+  never silently overwritten.
+- When a person's canonical relationship identity changes, relationship cells
   that uniquely resolve to that person are rewritten to the new canonical text.
 - Every caller receives a cell-level before/after change set so the queue
   processor can write an encrypted, revertible changelog.
-- Missing additive v17 columns are created automatically. Existing columns are
+- Missing additive compatibility columns are created automatically. Existing columns are
   never renamed and unrelated cells are never rewritten.
 """
 from __future__ import annotations
@@ -73,7 +75,13 @@ def safe_cell_value(value: Any) -> Any:
 
 def relation_section(value: object) -> str:
     raw = norm(value)
-    return SECTION_DISPLAY.get(raw.casefold(), raw)
+    direct = SECTION_DISPLAY.get(raw.casefold())
+    if direct:
+        return direct
+    sections = recognized_sections(raw)
+    if len(sections) == 1:
+        return SECTION_DISPLAY.get(sections[0], raw)
+    return raw
 
 
 def relation(name: object, year: object, section: object) -> str:
@@ -228,6 +236,8 @@ def append_note(ws, row: int, col: int | None, note: str, label: str, changes: l
     if not col or not note:
         return
     existing = norm(ws.cell(row, col).value)
+    if existing and note.casefold() in existing.casefold():
+        return
     value = note if not existing else f"{existing}\n{note}"
     change_cell(ws, row, col, value, label, changes)
 
@@ -343,15 +353,130 @@ def propagate_person_relationship_identity(
     return updated
 
 
-def create_missing_rat_from_correction(
-    ws, header_row, source_row, mapping, labels, label_to_col, change_payload, changes
-) -> list[int]:
-    """Create and reciprocate RAT rows referenced for the first time online.
+def split_list_text(value: object) -> list[str]:
+    return [norm(part) for part in re.split(r"\s*;\s*", norm(value)) if norm(part)]
 
-    This is deliberately limited to RAT fields on the regular "Is something
-    incorrect?" correction flow. Existing people are never duplicated: a
-    same-name/same-RAT-year workbook row counts as an existing directory entry.
+
+def merge_list_text(existing: object, additions: list[str]) -> str | None:
+    values = split_list_text(existing)
+    seen = {norm(value).casefold() for value in values}
+    for value in additions:
+        clean = norm(value)
+        if clean and clean.casefold() not in seen:
+            values.append(clean)
+            seen.add(clean.casefold())
+    return "; ".join(values) or None
+
+
+def merge_free_text(existing: object, addition: object) -> str | None:
+    current = norm(existing)
+    extra = norm(addition)
+    if not extra:
+        return current or None
+    if not current:
+        return extra
+    if extra.casefold() in current.casefold():
+        return current
+    return f"{current}\n\n{extra}"
+
+
+def merge_yes(existing: object, submitted_yes: bool) -> str:
+    return "Yes" if submitted_yes or norm(existing).casefold() in {"yes", "y", "true", "1"} else "No"
+
+
+def merge_section_entries(existing: object, additions: list[str]) -> str | None:
+    """Merge submitted section memberships without throwing away old subsections."""
+    result = split_list_text(existing)
+    for addition in additions:
+        clean = norm(addition)
+        if not clean:
+            continue
+        new_sections = recognized_sections(clean)
+        new_key = new_sections[0] if len(new_sections) == 1 else None
+        replaced = False
+        if new_key:
+            for index, current in enumerate(result):
+                current_sections = recognized_sections(current)
+                if len(current_sections) == 1 and current_sections[0] == new_key:
+                    # Prefer the more informative representation for the same broad section.
+                    if len(clean) > len(current) or "—" in clean:
+                        result[index] = clean
+                    replaced = True
+                    break
+        if not replaced and clean.casefold() not in {value.casefold() for value in result}:
+            result.append(clean)
+    return "; ".join(result) or None
+
+
+def relation_identity(value: object) -> tuple[str, int] | None:
+    parsed = parse_relation_edit(value)
+    if not parsed:
+        return None
+    name, year, _ = parsed
+    return namekey(name), year
+
+
+def append_rat_reference(ws, row: int, rat_cols, labels, relationship: str, changes) -> None:
+    wanted = relation_identity(relationship)
+    for _, col in rat_cols:
+        current = norm(ws.cell(row, col).value)
+        if current and wanted and relation_identity(current) == wanted:
+            change_cell(ws, row, col, relationship, labels[col], changes)
+            return
+    for _, col in rat_cols:
+        if not norm(ws.cell(row, col).value):
+            change_cell(ws, row, col, relationship, labels[col], changes)
+            return
+    raise ReviewRequired(f"Row {row} has no blank RAT slot for reciprocal relationship creation.")
+
+
+def create_person_from_relation(
+    ws, header_row, mapping, rat_cols, labels, *, source_row: int, role: str,
+    relationship: object, changes
+) -> int | None:
+    """Create an externally referenced person only when no name/year row exists.
+
+    New people are reciprocated immediately because the newly created row cannot
+    contain conflicting relationship data. Existing people are never duplicated
+    or silently overwritten.
     """
+    parsed = parse_relation_edit(relationship)
+    if not parsed:
+        raise ReviewRequired(
+            f"{role} must use Name (RAT Year) (Section) so a missing person can be created safely."
+        )
+    name, year, section = parsed
+    matches = rows_matching_person(ws, header_row, mapping, name, year)
+    if matches:
+        return matches[0] if len(matches) == 1 else None
+
+    given, family = split_person_name(name)
+    new_row = append_style_row(ws, header_row)
+    set_mapped(ws, new_row, mapping, labels, "given", given, changes)
+    set_mapped(ws, new_row, mapping, labels, "family", family, changes)
+    set_mapped(ws, new_row, mapping, labels, "year", year, changes)
+    instrument = canonical_section_entry(section) or relation_section(section)
+    set_mapped(ws, new_row, mapping, labels, "instrument", instrument, changes)
+    set_mapped(ws, new_row, mapping, labels, "display", "Given/Preferred Name", changes)
+    set_mapped(ws, new_row, mapping, labels, "lastDisplay", "Maiden/Family Name", changes)
+    set_mapped(ws, new_row, mapping, labels, "hasNick", "No", changes)
+    set_mapped(ws, new_row, mapping, labels, "changed", "No", changes)
+    set_mapped(ws, new_row, mapping, labels, "pair", "Yes", changes)
+
+    source_relationship = person_relation(ws, source_row, mapping)
+    if role.upper() == "RAT":
+        change_cell(ws, new_row, mapping["vet"], source_relationship, labels[mapping["vet"]], changes)
+    elif role.upper() == "VET":
+        append_rat_reference(ws, new_row, rat_cols, labels, source_relationship, changes)
+    else:
+        raise ReviewRequired(f"Unsupported relationship role for new person: {role}")
+    return new_row
+
+
+def create_missing_people_from_field_changes(
+    ws, header_row, source_row, mapping, rat_cols, labels, change_payload, changes
+) -> list[int]:
+    """Create new VET/RAT rows referenced by a correction/admin patch."""
     created: list[int] = []
     if not isinstance(change_payload, list):
         return created
@@ -359,50 +484,78 @@ def create_missing_rat_from_correction(
         if not isinstance(item, dict):
             continue
         label = norm(item.get("label"))
-        match = re.fullmatch(r"RAT\s+(\d+)", label, re.I)
-        if not match:
+        role = "VET" if label.casefold() == "vet" else ("RAT" if re.fullmatch(r"RAT\s+\d+", label, re.I) else "")
+        if not role:
             continue
         after = norm(item.get("after"))
         if not after:
             continue
-        parsed = parse_relation_edit(after)
-        if not parsed:
-            raise ReviewRequired(
-                f"{label} must use Name (RAT Year) (Section) so a missing RAT can be created safely."
-            )
-        name, year, section = parsed
-        matches = rows_matching_person(ws, header_row, mapping, name, year)
-        if matches:
-            # The referenced person already exists. Existing-profile reciprocity
-            # remains visible to Admin Mode for explicit validation.
-            continue
-
-        given, family = split_person_name(name)
-        new_row = append_style_row(ws, header_row)
-        set_mapped(ws, new_row, mapping, labels, "given", given, changes)
-        set_mapped(ws, new_row, mapping, labels, "family", family, changes)
-        set_mapped(ws, new_row, mapping, labels, "year", year, changes)
-        instrument = canonical_section_entry(section) or relation_section(section)
-        set_mapped(ws, new_row, mapping, labels, "instrument", instrument, changes)
-        set_mapped(ws, new_row, mapping, labels, "display", "Given/Preferred Name", changes)
-        set_mapped(ws, new_row, mapping, labels, "lastDisplay", "Maiden/Family Name", changes)
-        set_mapped(ws, new_row, mapping, labels, "hasNick", "No", changes)
-        set_mapped(ws, new_row, mapping, labels, "changed", "No", changes)
-        set_mapped(ws, new_row, mapping, labels, "pair", "Yes", changes)
-        # The user explicitly added this new person as their RAT, so unlike a
-        # claim involving an already-existing row, the new row can be safely
-        # reciprocated at creation time without overwriting prior profile data.
-        change_cell(
-            ws,
-            new_row,
-            mapping["vet"],
-            person_relation(ws, source_row, mapping),
-            labels[mapping["vet"]],
-            changes,
+        before_rows = ws.max_row
+        target = create_person_from_relation(
+            ws, header_row, mapping, rat_cols, labels,
+            source_row=source_row, role=role, relationship=after, changes=changes,
         )
-        created.append(new_row)
+        if target and target > before_rows:
+            created.append(target)
     return created
 
+
+def merge_relation_claims(ws, row, mapping, rat_cols, labels, payload, changes) -> list[tuple[str, str, int | None]]:
+    """Merge submitted VET/RAT claims into an existing profile without erasing old claims."""
+    touched: list[tuple[str, str, int | None]] = []
+    vet = payload.get("vet") or None
+    if isinstance(vet, dict) and norm(vet.get("name")):
+        wanted = relation(vet.get("name"), vet.get("year"), vet.get("section"))
+        current = norm(ws.cell(row, mapping["vet"]).value)
+        if current and relation_identity(current) != relation_identity(wanted):
+            raise ReviewRequired(
+                "The existing profile already has a different VET. The Add Yourself merge was held instead of overwriting it."
+            )
+        change_cell(ws, row, mapping["vet"], wanted, labels[mapping["vet"]], changes)
+        touched.append(("VET", wanted, parse_row_id(vet.get("matchedId"))))
+
+    rats = payload.get("rats") or []
+    if not isinstance(rats, list):
+        rats = []
+    for item in rats:
+        if not isinstance(item, dict) or not norm(item.get("name")):
+            continue
+        wanted = relation(item.get("name"), item.get("year"), item.get("section"))
+        identity = relation_identity(wanted)
+        target_col = None
+        for _, col in rat_cols:
+            current = norm(ws.cell(row, col).value)
+            if current and identity and relation_identity(current) == identity:
+                target_col = col
+                break
+        if target_col is None:
+            for _, col in rat_cols:
+                if not norm(ws.cell(row, col).value):
+                    target_col = col
+                    break
+        if target_col is None:
+            raise ReviewRequired("The existing profile has no blank RAT slot for all submitted RATs.")
+        change_cell(ws, row, target_col, wanted, labels[target_col], changes)
+        touched.append(("RAT", wanted, parse_row_id(item.get("matchedId"))))
+    return touched
+
+
+def create_missing_people_for_claims(
+    ws, header_row, source_row, mapping, rat_cols, labels,
+    claims: list[tuple[str, str, int | None]], changes
+) -> dict[str, int]:
+    created: dict[str, int] = {}
+    for role, raw, matched_row in claims:
+        if matched_row and header_row < matched_row <= ws.max_row:
+            continue
+        before = ws.max_row
+        target = create_person_from_relation(
+            ws, header_row, mapping, rat_cols, labels,
+            source_row=source_row, role=role, relationship=raw, changes=changes,
+        )
+        if target and target > before:
+            created[f"{role}:{relation_identity(raw)}"] = target
+    return created
 
 def leadership_values(self_data: dict[str, Any]) -> tuple[list[str], str, str, str, str, str]:
     history = self_data.get("leadershipHistory") or []
@@ -477,91 +630,187 @@ def apply_addition(ws, header_row, mapping, rat_cols, labels, label_to_col, payl
         raise ReviewRequired("Submitter RAT year is missing or invalid.")
     if not given or not family:
         raise ReviewRequired("Submitter name is incomplete.")
-    for row in range(header_row + 1, ws.max_row + 1):
-        if namekey(row_name(ws, row, mapping)) == namekey(f"{given} {family}") and row_year(ws, row, mapping) == year:
-            raise ReviewRequired(f"A same-name/same-year person already exists in row {row}.")
 
-    row = append_style_row(ws, header_row)
+    matches = rows_matching_person(ws, header_row, mapping, f"{given} {family}", year)
+    requested_existing = parse_row_id(payload.get("existingPersonId"))
+    if requested_existing and requested_existing not in matches:
+        requested_existing = None
+    if len(matches) > 1 and requested_existing is None:
+        raise ReviewRequired(
+            "More than one same-name/same-year profile exists. An administrator must choose which row receives this Add Yourself merge."
+        )
+    existing_row = requested_existing or (matches[0] if len(matches) == 1 else None)
+    merging = existing_row is not None
+    row = existing_row if existing_row is not None else append_style_row(ws, header_row)
+
+    old_relation = person_relation(ws, row, mapping) if merging else ""
+    incoming_locations = relationship_locations_resolving_to(ws, header_row, row, mapping, rat_cols) if merging else []
+
     sections = self_data.get("sections") or []
     section_names = [section_entry_text(item) for item in sections if isinstance(item, dict) and norm(item.get("section"))]
-    instrument = "; ".join(filter(None, section_names)) or relation_section(self_data.get("section"))
+    submitted_instrument = "; ".join(filter(None, section_names)) or relation_section(self_data.get("section"))
+    instrument = merge_section_entries(ws.cell(row, mapping["instrument"]).value, section_names or [submitted_instrument]) if merging else submitted_instrument
 
+    # Identity is safe to refresh because the same-name/same-year check selected this row.
     set_mapped(ws, row, mapping, labels, "given", given, changes)
-    set_mapped(ws, row, mapping, labels, "nickname", norm(self_data.get("nickname")) or None, changes)
     set_mapped(ws, row, mapping, labels, "family", family, changes)
-    set_mapped(ws, row, mapping, labels, "married", norm(self_data.get("marriedName")) or None, changes)
     set_mapped(ws, row, mapping, labels, "year", year, changes)
     set_mapped(ws, row, mapping, labels, "instrument", instrument, changes)
-    set_mapped(ws, row, mapping, labels, "display", display_preference(self_data.get("treeNamePreference")), changes)
-    set_mapped(ws, row, mapping, labels, "lastDisplay", last_name_display_preference(self_data.get("lastNamePreference")), changes)
-    set_mapped(
-        ws, row, mapping, labels, "sectionNick",
-        "; ".join(f"{relation_section(item.get('section'))}: {norm(item.get('sectionNickname'))}" for item in sections if isinstance(item, dict) and norm(item.get("sectionNickname"))) or None,
-        changes,
-    )
-    set_mapped(
-        ws, row, mapping, labels, "specific",
-        "; ".join(f"{relation_section(item.get('section'))}: {norm(item.get('specificInstrument'))}" for item in sections if isinstance(item, dict) and norm(item.get("specificInstrument"))) or None,
-        changes,
-    )
-    set_mapped(ws, row, mapping, labels, "memory", norm(payload.get("favoriteTechBandMemory")) or None, changes)
-    set_mapped(ws, row, mapping, labels, "otherFlag", "Yes" if self_data.get("otherGtEnsembles") else "No", changes)
-    set_mapped(ws, row, mapping, labels, "otherList", norm(self_data.get("otherGtEnsemblesList")) or None, changes)
-    set_mapped(ws, row, mapping, labels, "otherInstFlag", "Yes" if self_data.get("playedDifferentGtInstrument") else "No", changes)
-    set_mapped(ws, row, mapping, labels, "otherInst", norm(self_data.get("otherGtInstruments")) or None, changes)
+
+    nickname = norm(self_data.get("nickname"))
+    married = norm(self_data.get("marriedName"))
+    if nickname or not merging:
+        set_mapped(ws, row, mapping, labels, "nickname", nickname or None, changes)
+    if married or not merging:
+        set_mapped(ws, row, mapping, labels, "married", married or None, changes)
+
+    if self_data.get("hasNickname") or not merging or not norm(ws.cell(row, mapping.get("display", mapping["given"])).value):
+        set_mapped(ws, row, mapping, labels, "display", display_preference(self_data.get("treeNamePreference")), changes)
+    if self_data.get("changedLastName") or not merging:
+        set_mapped(ws, row, mapping, labels, "lastDisplay", last_name_display_preference(self_data.get("lastNamePreference")), changes)
+
+    submitted_section_nicks = [
+        f"{relation_section(item.get('section'))}: {norm(item.get('sectionNickname'))}"
+        for item in sections if isinstance(item, dict) and norm(item.get("sectionNickname"))
+    ]
+    submitted_specific = [
+        f"{relation_section(item.get('section'))}: {norm(item.get('specificInstrument'))}"
+        for item in sections if isinstance(item, dict) and norm(item.get("specificInstrument"))
+    ]
+    if merging:
+        if mapping.get("sectionNick") and submitted_section_nicks:
+            set_mapped(ws, row, mapping, labels, "sectionNick", merge_list_text(ws.cell(row, mapping["sectionNick"]).value, submitted_section_nicks), changes)
+        if mapping.get("specific") and submitted_specific:
+            set_mapped(ws, row, mapping, labels, "specific", merge_list_text(ws.cell(row, mapping["specific"]).value, submitted_specific), changes)
+    else:
+        set_mapped(ws, row, mapping, labels, "sectionNick", "; ".join(submitted_section_nicks) or None, changes)
+        set_mapped(ws, row, mapping, labels, "specific", "; ".join(submitted_specific) or None, changes)
+
+    memory = norm(payload.get("favoriteTechBandMemory"))
+    if merging and memory and mapping.get("memory"):
+        set_mapped(ws, row, mapping, labels, "memory", merge_free_text(ws.cell(row, mapping["memory"]).value, memory), changes)
+    elif not merging:
+        set_mapped(ws, row, mapping, labels, "memory", memory or None, changes)
+
+    # Free-text/list fields are additive during an existing-profile merge.
+    other_list = norm(self_data.get("otherGtEnsemblesList"))
+    other_inst = norm(self_data.get("otherGtInstruments"))
+    if merging:
+        if other_list and mapping.get("otherList"):
+            set_mapped(ws, row, mapping, labels, "otherList", merge_list_text(ws.cell(row, mapping["otherList"]).value, [other_list]), changes)
+        if other_inst and mapping.get("otherInst"):
+            set_mapped(ws, row, mapping, labels, "otherInst", merge_list_text(ws.cell(row, mapping["otherInst"]).value, [other_inst]), changes)
+    else:
+        set_mapped(ws, row, mapping, labels, "otherList", other_list or None, changes)
+        set_mapped(ws, row, mapping, labels, "otherInst", other_inst or None, changes)
 
     formal_roles, leadership_history, informal_text, classification, club_text, club_history = leadership_values(self_data)
-    set_mapped(ws, row, mapping, labels, "leadership", ", ".join(formal_roles) or None, changes)
-    set_mapped(ws, row, mapping, labels, "leadershipHistory", leadership_history or None, changes)
-    set_mapped(ws, row, mapping, labels, "informalFlag", "Yes" if informal_text else "No", changes)
-    set_mapped(ws, row, mapping, labels, "informal", informal_text or None, changes)
-    set_mapped(ws, row, mapping, labels, "leadershipClass", classification or None, changes)
-    set_mapped(ws, row, mapping, labels, "bandClubFlag", "Yes" if club_text or self_data.get("bandClubLeadership") else "No", changes)
-    set_mapped(ws, row, mapping, labels, "bandClub", club_text or None, changes)
-    set_mapped(ws, row, mapping, labels, "bandClubHistory", club_history or None, changes)
+    if merging:
+        if mapping.get("leadership") and formal_roles:
+            existing_roles = canonical_formal_roles(ws.cell(row, mapping["leadership"]).value)
+            set_mapped(ws, row, mapping, labels, "leadership", ", ".join(dict.fromkeys(existing_roles + formal_roles)), changes)
+        for key_name, submitted in (
+            ("leadershipHistory", leadership_history), ("informal", informal_text),
+            ("leadershipClass", classification), ("bandClub", club_text), ("bandClubHistory", club_history),
+        ):
+            col = mapping.get(key_name)
+            if col and submitted:
+                set_mapped(ws, row, mapping, labels, key_name, merge_list_text(ws.cell(row, col).value, split_list_text(submitted)), changes)
+    else:
+        set_mapped(ws, row, mapping, labels, "leadership", ", ".join(formal_roles) or None, changes)
+        set_mapped(ws, row, mapping, labels, "leadershipHistory", leadership_history or None, changes)
+        set_mapped(ws, row, mapping, labels, "informal", informal_text or None, changes)
+        set_mapped(ws, row, mapping, labels, "leadershipClass", classification or None, changes)
+        set_mapped(ws, row, mapping, labels, "bandClub", club_text or None, changes)
+        set_mapped(ws, row, mapping, labels, "bandClubHistory", club_history or None, changes)
 
-    set_mapped(ws, row, mapping, labels, "hasNick", "Yes" if self_data.get("hasNickname") else "No", changes)
-    set_mapped(ws, row, mapping, labels, "changed", "Yes" if self_data.get("changedLastName") else "No", changes)
-    set_mapped(ws, row, mapping, labels, "multi", "Yes" if self_data.get("multipleSections") else "No", changes)
-    set_mapped(ws, row, mapping, labels, "currentRat", "Yes" if self_data.get("currentlyRat") else "No", changes)
-    set_mapped(ws, row, mapping, labels, "pair", "Yes" if (payload.get("pairSystem") or {}).get("applies") else "No", changes)
-
-    # v17 intentionally records only the submitter's side of each relationship.
-    # Admin mode lists these unreciprocated claims and can validate the reverse side.
-    vet = payload.get("vet") or None
-    if vet:
-        change_cell(ws, row, mapping["vet"], relation(vet.get("name"), vet.get("year"), vet.get("section")), labels[mapping["vet"]], changes)
-    rats = payload.get("rats") or []
-    if len(rats) > len(rat_cols):
-        raise ReviewRequired("Submission has more RATs than the workbook has RAT columns.")
-    for index, item in enumerate(rats):
-        if not isinstance(item, dict):
+    bool_specs = (
+        ("otherFlag", bool(self_data.get("otherGtEnsembles"))),
+        ("otherInstFlag", bool(self_data.get("playedDifferentGtInstrument"))),
+        ("informalFlag", bool(informal_text)),
+        ("bandClubFlag", bool(club_text or self_data.get("bandClubLeadership"))),
+        ("hasNick", bool(self_data.get("hasNickname"))),
+        ("changed", bool(self_data.get("changedLastName"))),
+        ("multi", bool(self_data.get("multipleSections"))),
+        ("currentRat", bool(self_data.get("currentlyRat"))),
+        ("pair", bool((payload.get("pairSystem") or {}).get("applies"))),
+    )
+    for key_name, submitted_yes in bool_specs:
+        col = mapping.get(key_name)
+        if not col:
             continue
-        col = rat_cols[index][1]
-        change_cell(ws, row, col, relation(item.get("name"), item.get("year"), item.get("section")), labels[col], changes)
+        value = merge_yes(ws.cell(row, col).value, submitted_yes) if merging else ("Yes" if submitted_yes else "No")
+        set_mapped(ws, row, mapping, labels, key_name, value, changes)
+
+    claims: list[tuple[str, str, int | None]] = []
+    if merging:
+        claims = merge_relation_claims(ws, row, mapping, rat_cols, labels, payload, changes)
+    else:
+        vet = payload.get("vet") or None
+        if isinstance(vet, dict) and norm(vet.get("name")):
+            raw = relation(vet.get("name"), vet.get("year"), vet.get("section"))
+            change_cell(ws, row, mapping["vet"], raw, labels[mapping["vet"]], changes)
+            claims.append(("VET", raw, parse_row_id(vet.get("matchedId"))))
+        rats = payload.get("rats") or []
+        if len(rats) > len(rat_cols):
+            raise ReviewRequired("Submission has more RATs than the workbook has RAT columns.")
+        for index, item in enumerate(rats):
+            if not isinstance(item, dict) or not norm(item.get("name")):
+                continue
+            col = rat_cols[index][1]
+            raw = relation(item.get("name"), item.get("year"), item.get("section"))
+            change_cell(ws, row, col, raw, labels[col], changes)
+            claims.append(("RAT", raw, parse_row_id(item.get("matchedId"))))
+
+    created_by_claim = create_missing_people_for_claims(
+        ws, header_row, row, mapping, rat_cols, labels, claims, changes
+    )
 
     notes = payload.get("notes") or {}
     ncol = note_column(label_to_col)
     if isinstance(notes, dict):
         append_note(ws, row, ncol, notes.get("self", ""), labels.get(ncol, "Notes") if ncol else "Notes", changes)
-        # Notes for matched related people also apply automatically in v17 and
-        # remain revertible through the encrypted admin changelog.
         related_by_key: dict[str, int] = {}
-        if vet and parse_row_id(vet.get("matchedId")):
-            related_by_key["vet"] = parse_row_id(vet.get("matchedId"))  # type: ignore[assignment]
-        for item in rats:
+        vet = payload.get("vet") or None
+        if isinstance(vet, dict):
+            vet_row = parse_row_id(vet.get("matchedId"))
+            if not vet_row and norm(vet.get("name")):
+                ident = relation_identity(relation(vet.get("name"), vet.get("year"), vet.get("section")))
+                matches2 = rows_matching_person(ws, header_row, mapping, vet.get("name"), int(vet.get("year"))) if ident else []
+                vet_row = matches2[0] if len(matches2) == 1 else None
+            if vet_row:
+                related_by_key["vet"] = vet_row
+        for item in payload.get("rats") or []:
             if not isinstance(item, dict):
                 continue
             rid = parse_row_id(item.get("matchedId"))
+            if not rid and norm(item.get("name")):
+                try:
+                    matches2 = rows_matching_person(ws, header_row, mapping, item.get("name"), int(item.get("year")))
+                except (TypeError, ValueError):
+                    matches2 = []
+                rid = matches2[0] if len(matches2) == 1 else None
             if rid and item.get("key"):
                 related_by_key[str(item["key"])] = rid
-        for key, note in notes.items():
-            target_row = related_by_key.get(str(key))
+        for key_name, note in notes.items():
+            target_row = related_by_key.get(str(key_name))
             if target_row and header_row < target_row <= ws.max_row:
                 append_note(ws, target_row, ncol, note, labels.get(ncol, "Notes") if ncol else "Notes", changes)
 
-    return row, f"Added {given} {family} ({year})"
-
+    propagated = 0
+    if merging:
+        propagated = propagate_person_relationship_identity(
+            ws, header_row, row, mapping, rat_cols, labels, incoming_locations, old_relation, changes
+        )
+    created_count = len(created_by_claim)
+    if merging:
+        suffix = []
+        if created_count:
+            suffix.append(f"created/reciprocated {created_count} missing related person row(s)")
+        if propagated:
+            suffix.append(f"updated {propagated} incoming relationship reference(s)")
+        return row, f"Merged Add Yourself submission into {given} {family} ({year})" + (" and " + "; ".join(suffix) if suffix else "")
+    return row, f"Added {given} {family} ({year})" + (f" and created/reciprocated {created_count} missing related person row(s)" if created_count else "")
 
 def row_for_id(ws, header_row: int, person_id: object) -> int:
     row = parse_row_id(person_id)
@@ -588,50 +837,45 @@ def apply_field_changes(ws, row, changes_payload, labels, label_to_col, changes,
 
 def apply_correction(ws, header_row, mapping, rat_cols, labels, label_to_col, payload, changes):
     row = row_for_id(ws, header_row, payload.get("personId"))
-    # Capture every relationship cell that uniquely points to this row before
-    # changing its name/year/section. Those references are then rewritten to the
-    # post-edit canonical relationship text so the workbook cannot retain stale
-    # labels for the same person.
     old_relation = person_relation(ws, row, mapping)
     incoming_locations = relationship_locations_resolving_to(ws, header_row, row, mapping, rat_cols)
-    # Member corrections intentionally apply against the authoritative workbook
-    # even when the browser's encrypted-tree snapshot is older. change_cell()
-    # records the workbook's *actual* current value in the encrypted changelog,
-    # so the edit remains safely revertible without turning harmless snapshot
-    # drift into an administrator-review loop. Structural validation still runs.
     change_payload = payload.get("changes")
     apply_field_changes(ws, row, change_payload, labels, label_to_col, changes, stale_check=False)
     propagated = propagate_person_relationship_identity(
         ws, header_row, row, mapping, rat_cols, labels, incoming_locations, old_relation, changes
     )
-    created = create_missing_rat_from_correction(
-        ws, header_row, row, mapping, labels, label_to_col, change_payload, changes
+    created = create_missing_people_from_field_changes(
+        ws, header_row, row, mapping, rat_cols, labels, change_payload, changes
     )
     suffixes = []
     if created:
-        suffixes.append(f"created/reciprocated {len(created)} new RAT row(s)")
+        suffixes.append(f"created/reciprocated {len(created)} missing related person row(s)")
     if propagated:
         suffixes.append(f"updated {propagated} incoming relationship reference(s)")
     suffix = " and " + "; ".join(suffixes) if suffixes else ""
     return row, f"Updated {norm(payload.get('personId'))}{suffix}"
 
-
 def apply_admin_patch(ws, header_row, mapping, rat_cols, labels, label_to_col, payload, changes):
     row = row_for_id(ws, header_row, payload.get("personId"))
     old_relation = person_relation(ws, row, mapping)
     incoming_locations = relationship_locations_resolving_to(ws, header_row, row, mapping, rat_cols)
-    # An authenticated administrator patch follows the same authoritative-value
-    # rule. The submitted ``before`` value is UI context only; the changelog
-    # captures the real workbook value that was replaced.
-    apply_field_changes(ws, row, payload.get("changes"), labels, label_to_col, changes, stale_check=False)
+    change_payload = payload.get("changes")
+    apply_field_changes(ws, row, change_payload, labels, label_to_col, changes, stale_check=False)
     propagated = propagate_person_relationship_identity(
         ws, header_row, row, mapping, rat_cols, labels, incoming_locations, old_relation, changes
     )
-    suffix = f" and updated {propagated} incoming relationship reference(s)" if propagated else ""
+    created = create_missing_people_from_field_changes(
+        ws, header_row, row, mapping, rat_cols, labels, change_payload, changes
+    )
+    suffixes = []
+    if created:
+        suffixes.append(f"created/reciprocated {len(created)} missing related person row(s)")
+    if propagated:
+        suffixes.append(f"updated {propagated} incoming relationship reference(s)")
+    suffix = " and " + "; ".join(suffixes) if suffixes else ""
     return row, f"Admin edited {norm(payload.get('personId'))}{suffix}"
 
-
-def apply_admin_add(ws, header_row, mapping, labels, label_to_col, payload, changes):
+def apply_admin_add(ws, header_row, mapping, rat_cols, labels, label_to_col, payload, changes):
     fields = payload.get("fields") or {}
     if not isinstance(fields, dict):
         raise ReviewRequired("Admin add requires a field mapping.")
@@ -645,8 +889,16 @@ def apply_admin_add(ws, header_row, mapping, labels, label_to_col, payload, chan
     year = row_year(ws, row, mapping)
     if year is None or not (1908 <= year <= datetime.now().year + 1):
         raise ReviewRequired("Admin-added rows require a valid four-digit RAT Year.")
-    return row, f"Admin added {row_name(ws, row, mapping)}"
-
+    relation_changes = [
+        {"label": label, "after": value}
+        for label, value in fields.items()
+        if h(label) == "vet" or re.fullmatch(r"rat\d+", h(label))
+    ]
+    created = create_missing_people_from_field_changes(
+        ws, header_row, row, mapping, rat_cols, labels, relation_changes, changes
+    )
+    suffix = f" and created/reciprocated {len(created)} missing related person row(s)" if created else ""
+    return row, f"Admin added {row_name(ws, row, mapping)}{suffix}"
 
 def apply_admin_delete(ws, header_row, labels, payload, changes):
     row = row_for_id(ws, header_row, payload.get("personId"))
@@ -761,7 +1013,7 @@ def apply(workbook: Path, submission_file: Path, *, changelog_dir: Path = Path("
         elif kind == "admin-patch":
             row, summary = apply_admin_patch(ws, header_row, mapping, rat_cols, labels, label_to_col, payload, changes)
         elif kind == "admin-add":
-            row, summary = apply_admin_add(ws, header_row, mapping, labels, label_to_col, payload, changes)
+            row, summary = apply_admin_add(ws, header_row, mapping, rat_cols, labels, label_to_col, payload, changes)
         elif kind == "admin-delete":
             row, summary = apply_admin_delete(ws, header_row, labels, payload, changes)
         elif kind == "admin-reciprocate":
