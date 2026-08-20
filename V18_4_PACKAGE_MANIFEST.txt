@@ -1,0 +1,13 @@
+YJMB Family Tree v18.4 patch
+
+Overlay this package on top of v18.3.
+
+Files:
+- web_template/app.js
+- docs/app.js
+- web_template/release-notice.js
+- docs/release-notice.js
+- web_template/styles.css
+- docs/styles.css
+
+No workbook, plaintext/encrypted tree payload, secret, Worker configuration, or Markdown file is included.

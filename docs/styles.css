@@ -1374,6 +1374,50 @@ button:disabled { cursor: wait; opacity: .65; }
   .release-notice-actions { display: grid; grid-template-columns: 1fr; }
 }
 
+
+/* --- v18.4 scrollable version-history release notice --- */
+.release-notice-dialog {
+  display: flex;
+  flex-direction: column;
+}
+.release-notice-header { flex: 0 0 auto; }
+.release-notice-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+.release-history-section {
+  padding: 2px 0 12px;
+  border-bottom: 1px solid #e4e4e7;
+}
+.release-history-section:last-child { border-bottom: 0; }
+.release-history-section h3 {
+  position: sticky;
+  top: -16px;
+  z-index: 1;
+  margin: 10px -2px 6px;
+  padding: 7px 2px 5px;
+  background: rgba(255,255,255,.96);
+}
+.release-history-section ul { margin-bottom: 8px; }
+.release-notice-actions {
+  position: sticky;
+  bottom: -20px;
+  z-index: 2;
+  margin: 8px -20px -20px;
+  padding: 14px 20px 20px;
+  border-top: 1px solid #e4e4e7;
+  background: rgba(255,255,255,.97);
+}
+@media (max-width: 640px) {
+  .release-history-section h3 { top: -14px; }
+  .release-notice-actions {
+    bottom: -14px;
+    margin: 8px -14px -14px;
+    padding: 12px 14px 14px;
+  }
+}
+
 /* --- v18.1 unified connector layer --- */
 /* The complete visible relationship network is rendered as one SVG path. */
 .bands { z-index: 1; }
