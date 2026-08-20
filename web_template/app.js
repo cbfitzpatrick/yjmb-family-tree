@@ -44,8 +44,8 @@ function normalizeSearch(value) {
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const CONNECTOR_STROKE = '#000000';
-const CONNECTOR_OUTLINE_COLOR = '#808080';
-const CONNECTOR_OUTLINE_OPACITY = 0.50;
+const CONNECTOR_OUTLINE_COLOR = '#D6D6D6';
+const CONNECTOR_OUTLINE_OPACITY = 0.65;
 const CONNECTOR_OUTLINE_RADIUS = 4;
 
 function connectorSegments(connector) {
@@ -143,10 +143,21 @@ function appendConnectorOutlineFilter(svg) {
   const defs = document.createElementNS(SVG_NS, 'defs');
   const filter = document.createElementNS(SVG_NS, 'filter');
   filter.id = 'connector-outline-filter';
-  filter.setAttribute('x', '-10%');
-  filter.setAttribute('y', '-10%');
-  filter.setAttribute('width', '120%');
-  filter.setAttribute('height', '120%');
+  // v18.4: the entire visible connector network is intentionally one SVG path.
+  // A perfectly straight vertical family has a zero-width object bounding box.
+  // Percentage/objectBoundingBox filter regions can therefore collapse and hide
+  // the whole path when that family is isolated.  Use an explicit user-space
+  // filter region instead so vertical-only, horizontal-only, and branched trees
+  // all render identically.
+  const filterPadding = Math.max(24, CONNECTOR_OUTLINE_RADIUS * 4 + 8);
+  const filterWidth = Math.max(1, Number(state.displayWidth || svg.viewBox?.baseVal?.width || state.data?.width || 1));
+  const filterHeight = Math.max(1, Number(state.data?.height || svg.viewBox?.baseVal?.height || 1));
+  filter.setAttribute('filterUnits', 'userSpaceOnUse');
+  filter.setAttribute('primitiveUnits', 'userSpaceOnUse');
+  filter.setAttribute('x', String(-filterPadding));
+  filter.setAttribute('y', String(-filterPadding));
+  filter.setAttribute('width', String(filterWidth + filterPadding * 2));
+  filter.setAttribute('height', String(filterHeight + filterPadding * 2));
 
   const dilate = document.createElementNS(SVG_NS, 'feMorphology');
   dilate.setAttribute('in', 'SourceAlpha');
