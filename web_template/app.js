@@ -61,25 +61,76 @@ function connectorRootIds(connector) {
   return roots;
 }
 
+function nearlySamePoint(left, right, tolerance = 1.5) {
+  return Boolean(left && right)
+    && Math.abs(Number(left.x) - Number(right.x)) <= tolerance
+    && Math.abs(Number(left.y) - Number(right.y)) <= tolerance;
+}
+
+function connectorGeometryPersonIds(connector) {
+  // Older/generated payloads can occasionally have incomplete connector owner
+  // metadata.  Recover ownership from the actual card attachment points so a
+  // perfectly vertical one-RAT chain is not lost when its tree is isolated.
+  const points = [];
+  for (const segment of connectorSegments(connector)) {
+    if (segment?.start) points.push(segment.start);
+    if (segment?.end) points.push(segment.end);
+  }
+  const ids = [];
+  for (const person of state.people.values()) {
+    const card = person?.card;
+    if (!card) continue;
+    const centerX = Number(card.x) + Number(card.width) / 2;
+    const top = { x: centerX, y: Number(card.y) };
+    const bottom = { x: centerX, y: Number(card.y) + Number(card.height) };
+    if (points.some((point) => nearlySamePoint(point, top) || nearlySamePoint(point, bottom))) {
+      ids.push(person.id);
+    }
+  }
+  return ids;
+}
+
+function connectorEndpointIds(connector) {
+  const ids = [connector.parentId, ...(connector.childIds || [])].filter(Boolean);
+  for (const id of connectorGeometryPersonIds(connector)) {
+    if (!ids.includes(id)) ids.push(id);
+  }
+  return ids;
+}
+
 function connectorPathData(data, allowedRootIds = null) {
   const commands = [];
   for (const connector of data.connectors || []) {
-    const rootIds = connectorRootIds(connector);
-    // A focused/filtered tree must retain its own connectors.  Checking every
-    // endpoint is intentionally more robust than checking only parentId: older
-    // encrypted payloads can contain connector-parent/root metadata that was
-    // generated before the current tree index format.
+    const endpointIds = connectorEndpointIds(connector);
+    const visibleEndpointIds = allowedRootIds
+      ? endpointIds.filter((personId) => state.visiblePeople.has(personId))
+      : endpointIds;
+
+    // Tree isolation is a visibility operation, not a connector-metadata
+    // operation.  If either endpoint belongs to the visible connected tree,
+    // retain the connector.  This is particularly important for straight
+    // one-parent/one-child chains whose historical connector records may lack
+    // complete parent/root ownership metadata.
+    if (allowedRootIds && !visibleEndpointIds.length) continue;
+
+    const rootIds = [];
+    for (const personId of visibleEndpointIds.length ? visibleEndpointIds : endpointIds) {
+      const candidate = state.rootByPerson.get(personId);
+      if (candidate && !rootIds.includes(candidate)) rootIds.push(candidate);
+    }
+    for (const candidate of connectorRootIds(connector)) {
+      if (!rootIds.includes(candidate)) rootIds.push(candidate);
+    }
+
     let rootId = allowedRootIds
       ? rootIds.find((candidate) => allowedRootIds.has(candidate))
       : rootIds[0];
     if (allowedRootIds && !rootId) {
-      const endpointVisible = [connector.parentId, ...(connector.childIds || [])]
-        .some((personId) => state.visiblePeople.has(personId));
-      if (!endpointVisible) continue;
       rootId = (state.focusedRootId && allowedRootIds.has(state.focusedRootId))
         ? state.focusedRootId
         : [...allowedRootIds][0];
     }
+
     const dx = state.rootShiftX.get(rootId || '') || 0;
     for (const segment of connectorSegments(connector)) {
       commands.push(`M ${segment.start.x + dx} ${segment.start.y} L ${segment.end.x + dx} ${segment.end.y}`);

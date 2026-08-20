@@ -430,6 +430,60 @@ def append_rat_reference(ws, row: int, rat_cols, labels, relationship: str, chan
     raise ReviewRequired(f"Row {row} has no blank RAT slot for reciprocal relationship creation.")
 
 
+def insert_rat_reference_first(ws, row: int, rat_cols, labels, relationship: str, changes) -> None:
+    """Put a reciprocal RAT in RAT 1 and shift the existing ordered RATs down.
+
+    If the relationship already exists in a later RAT slot it is moved to RAT 1
+    rather than duplicated.  No existing RAT is discarded; a completely full
+    row is held for review before insertion.
+    """
+    wanted = relation_identity(relationship)
+    existing: list[str] = []
+    for _, col in rat_cols:
+        current = norm(ws.cell(row, col).value)
+        if not current:
+            continue
+        if wanted and relation_identity(current) == wanted:
+            continue
+        existing.append(current)
+
+    if len(existing) >= len(rat_cols):
+        raise ReviewRequired(
+            f"Row {row} has no RAT slot available to insert the newly reciprocated person as RAT 1."
+        )
+
+    ordered = [relationship, *existing]
+    for index, (_, col) in enumerate(rat_cols):
+        value = ordered[index] if index < len(ordered) else None
+        change_cell(ws, row, col, value, labels[col], changes)
+
+
+def ensure_relationship_reciprocal(
+    ws, source_row: int, target_row: int, role: str, mapping, rat_cols, labels, changes
+) -> None:
+    """Reciprocate a submitted relationship against an existing or new row.
+
+    A submitted VET means ``target_row`` is the source person's VET, so the
+    source must appear as RAT 1 on that target (existing RATs shift down).
+    A submitted RAT means ``target_row`` is the source person's RAT, so the
+    target's VET is filled when blank or canonicalized when already equivalent.
+    """
+    source_relationship = person_relation(ws, source_row, mapping)
+    if role.upper() == "VET":
+        insert_rat_reference_first(ws, target_row, rat_cols, labels, source_relationship, changes)
+        return
+    if role.upper() == "RAT":
+        vet_col = mapping["vet"]
+        current = norm(ws.cell(target_row, vet_col).value)
+        if not current or relation_identity(current) == relation_identity(source_relationship):
+            change_cell(ws, target_row, vet_col, source_relationship, labels[vet_col], changes)
+            return
+        raise ReviewRequired(
+            f"Row {target_row} already lists a different VET; the RAT relationship was not overwritten automatically."
+        )
+    raise ReviewRequired(f"Unsupported relationship role for reciprocity: {role}")
+
+
 def create_person_from_relation(
     ws, header_row, mapping, rat_cols, labels, *, source_row: int, role: str,
     relationship: object, changes
@@ -505,6 +559,10 @@ def create_missing_people_from_field_changes(
             ws, header_row, mapping, rat_cols, labels,
             source_row=source_row, role=role, relationship=after, changes=changes,
         )
+        if target:
+            ensure_relationship_reciprocal(
+                ws, source_row, target, role, mapping, rat_cols, labels, changes
+            )
         if target and target > before_rows:
             created.append(target)
     return created
@@ -556,13 +614,22 @@ def create_missing_people_for_claims(
 ) -> dict[str, int]:
     created: dict[str, int] = {}
     for role, raw, matched_row in claims:
+        target = None
         if matched_row and header_row < matched_row <= ws.max_row:
-            continue
+            # Do not trust a stale browser row id blindly.  It must still identify
+            # the same name/year relationship in the authoritative workbook.
+            if relation_identity(person_relation(ws, matched_row, mapping)) == relation_identity(raw):
+                target = matched_row
         before = ws.max_row
-        target = create_person_from_relation(
-            ws, header_row, mapping, rat_cols, labels,
-            source_row=source_row, role=role, relationship=raw, changes=changes,
-        )
+        if target is None:
+            target = create_person_from_relation(
+                ws, header_row, mapping, rat_cols, labels,
+                source_row=source_row, role=role, relationship=raw, changes=changes,
+            )
+        if target:
+            ensure_relationship_reciprocal(
+                ws, source_row, target, role, mapping, rat_cols, labels, changes
+            )
         if target and target > before:
             created[f"{role}:{relation_identity(raw)}"] = target
     return created
