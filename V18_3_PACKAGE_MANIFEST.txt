@@ -1,0 +1,8 @@
+YJMB v18.3 patch overlay
+Base: v18.2
+
+Changed files:
+apply_secure_submission.py
+web_template/app.js
+docs/app.js
+V18_3_PACKAGE_MANIFEST.txt
