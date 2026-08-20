@@ -45,19 +45,42 @@ function normalizeSearch(value) {
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const CONNECTOR_STROKE = '#000000';
 const CONNECTOR_OUTLINE_COLOR = '#808080';
-const CONNECTOR_OUTLINE_OPACITY = 0.25;
-const CONNECTOR_OUTLINE_RADIUS = 2;
+const CONNECTOR_OUTLINE_OPACITY = 0.50;
+const CONNECTOR_OUTLINE_RADIUS = 4;
 
 function connectorSegments(connector) {
   return [connector.parentStem, ...(connector.siblingBus ? [connector.siblingBus] : []), ...(connector.childStems || [])].filter(Boolean);
 }
 
+function connectorRootIds(connector) {
+  const roots = [];
+  for (const personId of [connector.parentId, ...(connector.childIds || [])]) {
+    const rootId = state.rootByPerson.get(personId);
+    if (rootId && !roots.includes(rootId)) roots.push(rootId);
+  }
+  return roots;
+}
+
 function connectorPathData(data, allowedRootIds = null) {
   const commands = [];
   for (const connector of data.connectors || []) {
-    const rootId = state.rootByPerson.get(connector.parentId) || '';
-    if (allowedRootIds && !allowedRootIds.has(rootId)) continue;
-    const dx = state.rootShiftX.get(rootId) || 0;
+    const rootIds = connectorRootIds(connector);
+    // A focused/filtered tree must retain its own connectors.  Checking every
+    // endpoint is intentionally more robust than checking only parentId: older
+    // encrypted payloads can contain connector-parent/root metadata that was
+    // generated before the current tree index format.
+    let rootId = allowedRootIds
+      ? rootIds.find((candidate) => allowedRootIds.has(candidate))
+      : rootIds[0];
+    if (allowedRootIds && !rootId) {
+      const endpointVisible = [connector.parentId, ...(connector.childIds || [])]
+        .some((personId) => state.visiblePeople.has(personId));
+      if (!endpointVisible) continue;
+      rootId = (state.focusedRootId && allowedRootIds.has(state.focusedRootId))
+        ? state.focusedRootId
+        : [...allowedRootIds][0];
+    }
+    const dx = state.rootShiftX.get(rootId || '') || 0;
     for (const segment of connectorSegments(connector)) {
       commands.push(`M ${segment.start.x + dx} ${segment.start.y} L ${segment.end.x + dx} ${segment.end.y}`);
     }

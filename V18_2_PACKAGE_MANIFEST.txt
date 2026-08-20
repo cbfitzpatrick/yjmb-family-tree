@@ -1,0 +1,19 @@
+YJMB Family Tree v18.2 patch
+Base: v18 + v18.1 already pasted into the local repository.
+
+Changes:
+- Focused "Show tree" views retain the selected family's connector path.
+- Connector path remains a single SVG path; black stroke retained.
+- Medium-gray connector halo doubles from 2 px to 4 px and from 25% to 50% opacity.
+- Correction-page VET/RAT changes guarantee a real related person row when the referenced identity does not exist, with immediate reciprocal relationship creation.
+- Ambiguous existing name/year identities are held for review instead of leaving a dangling relationship or creating a duplicate.
+- Lightened section colors:
+  Flute #EC725B
+  Mellophone #00D188
+  Baritone #48C1FF
+  Sousaphone #6586E0
+  Front Ensemble #B6B2FF
+  Battery #C475EB
+- v18.2 release notice refreshes for users who dismissed the v18 notice.
+
+This patch contains no workbook, plaintext/encrypted tree payload, secrets, Markdown files, or Worker configuration.
