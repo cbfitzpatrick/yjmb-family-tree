@@ -1,0 +1,11 @@
+YJMB Family Tree v18.5 patch
+
+Overlay on top of v18.4.
+
+Changes:
+- Cross-browser/mobile connector rendering without SVG filters.
+- Unified connector geometry painted with pale-gray underlay and black foreground.
+- Minimum screen-space connector widths on mobile/coarse-pointer devices.
+- v18.5 added to the version-18 release popup.
+
+This patch contains no workbook, tree payload, secrets, Worker configuration, or Markdown files.

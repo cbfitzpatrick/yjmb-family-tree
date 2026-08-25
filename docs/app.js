@@ -139,59 +139,30 @@ function connectorPathData(data, allowedRootIds = null) {
   return commands.join(' ');
 }
 
-function appendConnectorOutlineFilter(svg) {
-  const defs = document.createElementNS(SVG_NS, 'defs');
-  const filter = document.createElementNS(SVG_NS, 'filter');
-  filter.id = 'connector-outline-filter';
-  // v18.4: the entire visible connector network is intentionally one SVG path.
-  // A perfectly straight vertical family has a zero-width object bounding box.
-  // Percentage/objectBoundingBox filter regions can therefore collapse and hide
-  // the whole path when that family is isolated.  Use an explicit user-space
-  // filter region instead so vertical-only, horizontal-only, and branched trees
-  // all render identically.
-  const filterPadding = Math.max(24, CONNECTOR_OUTLINE_RADIUS * 4 + 8);
-  const filterWidth = Math.max(1, Number(state.displayWidth || svg.viewBox?.baseVal?.width || state.data?.width || 1));
-  const filterHeight = Math.max(1, Number(state.data?.height || svg.viewBox?.baseVal?.height || 1));
-  filter.setAttribute('filterUnits', 'userSpaceOnUse');
-  filter.setAttribute('primitiveUnits', 'userSpaceOnUse');
-  filter.setAttribute('x', String(-filterPadding));
-  filter.setAttribute('y', String(-filterPadding));
-  filter.setAttribute('width', String(filterWidth + filterPadding * 2));
-  filter.setAttribute('height', String(filterHeight + filterPadding * 2));
+function updateConnectorStrokeWidths() {
+  if (!state.data || !connectorSvg) return;
+  const baseWidth = Math.max(1, Number(state.data.connectorWidth || 9));
+  const outlineExtra = CONNECTOR_OUTLINE_RADIUS * 2;
+  let blackWidth = baseWidth;
+  let outlineWidth = baseWidth + outlineExtra;
 
-  const dilate = document.createElementNS(SVG_NS, 'feMorphology');
-  dilate.setAttribute('in', 'SourceAlpha');
-  dilate.setAttribute('operator', 'dilate');
-  dilate.setAttribute('radius', String(CONNECTOR_OUTLINE_RADIUS));
-  dilate.setAttribute('result', 'expanded');
+  // v18.5: at the new full-height 100% view, phone screens can reduce the
+  // entire tree enough that a normal 9-unit SVG stroke becomes sub-pixel.
+  // Keep a small minimum *screen-space* width on mobile/coarse-pointer devices.
+  // We do this numerically instead of relying on vector-effect so iOS Safari,
+  // Android Chromium, and desktop browsers use the same SVG geometry model.
+  if (isMobileTree()) {
+    const scale = Math.max(0.001, Number(state.scale || state.baseScale || 1));
+    blackWidth = Math.max(baseWidth, 2.25 / scale);
+    outlineWidth = Math.max(baseWidth + outlineExtra, 6.25 / scale);
+  }
 
-  const ring = document.createElementNS(SVG_NS, 'feComposite');
-  ring.setAttribute('in', 'expanded');
-  ring.setAttribute('in2', 'SourceAlpha');
-  ring.setAttribute('operator', 'out');
-  ring.setAttribute('result', 'outlineMask');
-
-  const flood = document.createElementNS(SVG_NS, 'feFlood');
-  flood.setAttribute('flood-color', CONNECTOR_OUTLINE_COLOR);
-  flood.setAttribute('flood-opacity', String(CONNECTOR_OUTLINE_OPACITY));
-  flood.setAttribute('result', 'outlineColor');
-
-  const mask = document.createElementNS(SVG_NS, 'feComposite');
-  mask.setAttribute('in', 'outlineColor');
-  mask.setAttribute('in2', 'outlineMask');
-  mask.setAttribute('operator', 'in');
-  mask.setAttribute('result', 'outline');
-
-  const merge = document.createElementNS(SVG_NS, 'feMerge');
-  const outlineNode = document.createElementNS(SVG_NS, 'feMergeNode');
-  outlineNode.setAttribute('in', 'outline');
-  const sourceNode = document.createElementNS(SVG_NS, 'feMergeNode');
-  sourceNode.setAttribute('in', 'SourceGraphic');
-  merge.append(outlineNode, sourceNode);
-
-  filter.append(dilate, ring, flood, mask, merge);
-  defs.appendChild(filter);
-  svg.appendChild(defs);
+  for (const path of qa('.connector-outline-path', connectorSvg)) {
+    path.setAttribute('stroke-width', String(outlineWidth));
+  }
+  for (const path of qa('.connector-path', connectorSvg)) {
+    path.setAttribute('stroke-width', String(blackWidth));
+  }
 }
 
 function renderBands(data) {
@@ -301,21 +272,34 @@ function buildTreeIndexes(data) {
 function renderConnectors(data, allowedRootIds = null) {
   connectorSvg.replaceChildren();
   connectorSvg.setAttribute('height', data.height);
-  appendConnectorOutlineFilter(connectorSvg);
 
   const d = connectorPathData(data, allowedRootIds);
   if (!d) return;
+
+  // v18.5: render the complete visible relationship network as two paint
+  // passes of the same single combined path geometry.  This avoids SVG filter
+  // bugs on mobile Safari/Chromium while still avoiding per-segment line DOM.
+  const outline = document.createElementNS(SVG_NS, 'path');
+  outline.classList.add('connector-outline-path');
+  outline.setAttribute('d', d);
+  outline.setAttribute('fill', 'none');
+  outline.setAttribute('stroke', CONNECTOR_OUTLINE_COLOR);
+  outline.setAttribute('stroke-opacity', String(CONNECTOR_OUTLINE_OPACITY));
+  outline.setAttribute('stroke-linecap', 'square');
+  outline.setAttribute('stroke-linejoin', 'miter');
+  outline.setAttribute('shape-rendering', 'geometricPrecision');
+
   const path = document.createElementNS(SVG_NS, 'path');
   path.classList.add('connector-path');
   path.setAttribute('d', d);
   path.setAttribute('fill', 'none');
   path.setAttribute('stroke', CONNECTOR_STROKE);
-  path.setAttribute('stroke-width', String(data.connectorWidth || 9));
   path.setAttribute('stroke-linecap', 'square');
   path.setAttribute('stroke-linejoin', 'miter');
   path.setAttribute('shape-rendering', 'geometricPrecision');
-  path.setAttribute('filter', 'url(#connector-outline-filter)');
-  connectorSvg.appendChild(path);
+
+  connectorSvg.append(outline, path);
+  updateConnectorStrokeWidths();
 }
 
 function gradientPairForSection(section) {
@@ -549,6 +533,7 @@ function setScale(next, { preserveFocus = true } = {}) {
   state.scale = Math.max(minimum, Math.min(maximum, next));
   stage.style.transform = `scale(${state.scale})`;
   q('#zoom-label').textContent = `${Math.round(zoomPercent())}%`;
+  updateConnectorStrokeWidths();
   renderYearAxis();
   if (focus) {
     viewport.scrollLeft = Math.max(0, state.contentOffsetX + focus.logicalX * state.scale - focus.anchorX);
