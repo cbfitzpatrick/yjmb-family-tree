@@ -1418,11 +1418,14 @@ button:disabled { cursor: wait; opacity: .65; }
   }
 }
 
-/* --- v18.1 unified connector layer --- */
-/* The complete visible relationship network is rendered as one SVG path. */
+/* --- v18.1/v18.5 unified connector layer --- */
+/* The visible relationship network is one combined path geometry painted in
+   two passes (halo + black line), never one DOM element per segment. */
 .bands { z-index: 1; }
-.connectors { z-index: 2; }
+.connectors { z-index: 2; display: block; overflow: visible; pointer-events: none; }
 .cards { z-index: 3; }
+.connector-outline-path,
 .connector-path { pointer-events: none; }
+.connector-outline-path { opacity: 1; }
 .admin-tree-connectors { z-index: 1; }
 .admin-tree-cards { z-index: 2; }

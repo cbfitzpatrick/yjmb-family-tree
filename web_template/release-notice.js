@@ -1,7 +1,7 @@
 'use strict';
 
 (() => {
-  const RELEASE = 'v18.4';
+  const RELEASE = 'v18.5';
   const STORAGE_KEY = 'yjmbReleaseNoticeDismissedVersion';
   const SESSION_KEY = `yjmbReleaseNoticeSeen:${RELEASE}`;
   try {
@@ -11,6 +11,14 @@
   }
 
   const VERSION_SECTIONS = [
+    {
+      version: 'v18.5',
+      items: [
+        'Fixed family-tree connections that could disappear on phones and other coarse-pointer/mobile browsers.',
+        'Removed the connector rendering dependency on SVG filters and now paints one unified relationship path in a pale-gray underlay plus black foreground pass.',
+        'Added a minimum on-screen connector width on mobile so the full-height 100% view cannot shrink relationship lines below a visible size.',
+      ],
+    },
     {
       version: 'v18.4',
       items: [
@@ -87,7 +95,7 @@
         </div>
         <div class="release-notice-actions">
           <button class="secondary-button" type="button" data-release-close>Continue</button>
-          <button class="primary-button" type="button" data-release-dismiss>Don’t show again for v18.4</button>
+          <button class="primary-button" type="button" data-release-dismiss>Don’t show again for v18.5</button>
         </div>
       </div>`;
     document.body.appendChild(dialog);
