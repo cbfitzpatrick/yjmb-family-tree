@@ -30,11 +30,56 @@ from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter, range_boundaries
 
 from yjmb_schema import ensure_optional_columns, find_header_row, header_key
-from yjmb_taxonomy import SECTION_DISPLAY, canonical_formal_roles, canonical_section_entry, informal_roles_from_text, recognized_sections
+from yjmb_taxonomy import (
+    SECTION_DISPLAY,
+    canonical_formal_roles,
+    canonical_section_entry,
+    informal_roles_from_text,
+    leadership_title_key,
+    normalize_leadership_category,
+    recognized_sections,
+)
 
 
 class ReviewRequired(Exception):
     pass
+
+
+LEADERSHIP_TAXONOMY_SHEET = "Leadership Taxonomy"
+
+
+def ensure_leadership_taxonomy_sheet(wb):
+    if LEADERSHIP_TAXONOMY_SHEET in wb.sheetnames:
+        ws = wb[LEADERSHIP_TAXONOMY_SHEET]
+    else:
+        ws = wb.create_sheet(LEADERSHIP_TAXONOMY_SHEET)
+        ws.cell(1, 1, "Title")
+        ws.cell(1, 2, "Category")
+        ws.sheet_state = "veryHidden"
+    if norm(ws.cell(1, 1).value) != "Title":
+        ws.cell(1, 1, "Title")
+    if norm(ws.cell(1, 2).value) != "Category":
+        ws.cell(1, 2, "Category")
+    if len(wb.sheetnames) > 1:
+        ws.sheet_state = "veryHidden"
+    return ws
+
+
+def taxonomy_change_cell(ws, row: int, col: int, value: Any, label: str, changes: list[dict[str, Any]]) -> None:
+    value = safe_cell_value(value)
+    cell = ws.cell(row, col)
+    before = cell.value
+    if before == value or (norm(before) == norm(value) and not isinstance(value, (int, float, bool))):
+        return
+    cell.value = value
+    changes.append({
+        "sheet": ws.title,
+        "row": row,
+        "column": col,
+        "label": label,
+        "before": json_cell(before),
+        "after": json_cell(value),
+    })
 
 
 def norm(value: object) -> str:
@@ -1043,13 +1088,56 @@ def apply_admin_reciprocate(ws, header_row, mapping, rat_cols, labels, payload, 
     raise ReviewRequired("Reciprocal validation role must be VET or RAT.")
 
 
+def apply_admin_leadership_taxonomy(wb, payload, changes):
+    assignments = payload.get("assignments") or []
+    if not isinstance(assignments, list) or not assignments:
+        raise ReviewRequired("Leadership taxonomy update requires at least one title classification.")
+    taxonomy_ws = ensure_leadership_taxonomy_sheet(wb)
+    rows_by_key: dict[str, int] = {}
+    for row in range(2, taxonomy_ws.max_row + 1):
+        existing_title = norm(taxonomy_ws.cell(row, 1).value)
+        if existing_title:
+            rows_by_key[leadership_title_key(existing_title)] = row
+    changed_titles: list[str] = []
+    first_row = 2
+    for assignment in assignments:
+        if not isinstance(assignment, dict):
+            raise ReviewRequired("Leadership taxonomy assignments must be objects.")
+        title = norm(assignment.get("title"))
+        raw_category = norm(assignment.get("category"))
+        if not title:
+            raise ReviewRequired("Leadership taxonomy assignments require a title.")
+        category = normalize_leadership_category(raw_category)
+        if raw_category and not category:
+            raise ReviewRequired(f"Unsupported leadership category for {title!r}: {raw_category!r}.")
+        title_key = leadership_title_key(title)
+        row = rows_by_key.get(title_key)
+        if row is None:
+            if not category:
+                continue  # Restoring automatic classification for an unseen title is already a no-op.
+            row = taxonomy_ws.max_row + 1
+            rows_by_key[title_key] = row
+            taxonomy_change_cell(taxonomy_ws, row, 1, title, "Title", changes)
+        first_row = min(first_row, row) if changed_titles else row
+        before_count = len(changes)
+        taxonomy_change_cell(taxonomy_ws, row, 2, category or None, "Category", changes)
+        if len(changes) != before_count:
+            changed_titles.append(title)
+    summary = (
+        f"Updated leadership taxonomy for {len(changed_titles)} title(s)"
+        if changed_titles else
+        "Leadership taxonomy already matched the requested classifications"
+    )
+    return first_row, summary
+
+
 def values_equivalent(left: Any, right: Any) -> bool:
     if left == right:
         return True
     return norm(left) == norm(right)
 
 
-def apply_admin_revert(ws, header_row, labels, label_to_col, payload, changes, changelog_dir: Path):
+def apply_admin_revert(wb, ws, header_row, labels, label_to_col, payload, changes, changelog_dir: Path):
     change_id = re.sub(r"[^A-Za-z0-9_.-]", "", norm(payload.get("changeId")))
     if not change_id:
         raise ReviewRequired("A changelog ID is required for revert.")
@@ -1061,21 +1149,40 @@ def apply_admin_revert(ws, header_row, labels, label_to_col, payload, changes, c
     original = entry.get("changes") or []
     if not original:
         raise ReviewRequired("The selected changelog entry has no cell changes to revert.")
-    # Fail safely if a later update touched any of these cells.
+
+    resolved: list[tuple[object, int, int, str, Any]] = []
     for item in original:
         row = int(item.get("row"))
-        if not (header_row < row <= ws.max_row):
-            raise ReviewRequired(f"Row {row} from the changelog no longer exists.")
-        col = label_to_col.get(h(item.get("label")))
-        if not col:
-            raise ReviewRequired(f"Field {item.get('label')!r} from the changelog no longer exists.")
-        if not values_equivalent(ws.cell(row, col).value, item.get("after")):
-            raise ReviewRequired(f"Cannot safely revert {item.get('label')} on row {row}: it was changed again later.")
-    for item in reversed(original):
-        row = int(item.get("row"))
-        col = label_to_col[h(item.get("label"))]
-        change_cell(ws, row, col, item.get("before"), labels[col], changes)
-    return int(original[0].get("row")), f"Reverted changelog entry {change_id}"
+        sheet_name = norm(item.get("sheet"))
+        if sheet_name:
+            if sheet_name not in wb.sheetnames:
+                raise ReviewRequired(f"Worksheet {sheet_name!r} from the changelog no longer exists.")
+            target_ws = wb[sheet_name]
+            col = int(item.get("column") or 0)
+            if col < 1:
+                header = norm(item.get("label"))
+                col = next((c for c in range(1, target_ws.max_column + 1) if norm(target_ws.cell(1, c).value) == header), 0)
+            if row < 1 or row > target_ws.max_row or col < 1:
+                raise ReviewRequired(f"Taxonomy cell from changelog {change_id} no longer exists.")
+            label = norm(item.get("label")) or f"Column {col}"
+        else:
+            target_ws = ws
+            if not (header_row < row <= ws.max_row):
+                raise ReviewRequired(f"Row {row} from the changelog no longer exists.")
+            col = label_to_col.get(h(item.get("label"))) or 0
+            if not col:
+                raise ReviewRequired(f"Field {item.get('label')!r} from the changelog no longer exists.")
+            label = labels[col]
+        if not values_equivalent(target_ws.cell(row, col).value, item.get("after")):
+            raise ReviewRequired(f"Cannot safely revert {label} on row {row}: it was changed again later.")
+        resolved.append((target_ws, row, col, label, item.get("before")))
+
+    for target_ws, row, col, label, before in reversed(resolved):
+        if target_ws.title == LEADERSHIP_TAXONOMY_SHEET:
+            taxonomy_change_cell(target_ws, row, col, before, label, changes)
+        else:
+            change_cell(target_ws, row, col, before, label, changes)
+    return int(original[0].get("row") or 0), f"Reverted changelog entry {change_id}"
 
 
 def apply(workbook: Path, submission_file: Path, *, changelog_dir: Path = Path("secure/changelog")) -> dict[str, Any]:
@@ -1106,12 +1213,17 @@ def apply(workbook: Path, submission_file: Path, *, changelog_dir: Path = Path("
             row, summary = apply_admin_delete(ws, header_row, labels, payload, changes)
         elif kind == "admin-reciprocate":
             row, summary = apply_admin_reciprocate(ws, header_row, mapping, rat_cols, labels, payload, changes)
+        elif kind == "admin-leadership-taxonomy":
+            row, summary = apply_admin_leadership_taxonomy(wb, payload, changes)
         elif kind == "admin-revert":
-            row, summary = apply_admin_revert(ws, header_row, labels, label_to_col, payload, changes, changelog_dir)
+            row, summary = apply_admin_revert(wb, ws, header_row, labels, label_to_col, payload, changes, changelog_dir)
         else:
             raise ReviewRequired(f"Unsupported update kind: {kind}")
 
-        resulting_name = row_name(ws, row, mapping) if kind != "admin-delete" else ""
+        if kind == "admin-leadership-taxonomy":
+            resulting_name = "Leadership taxonomy"
+        else:
+            resulting_name = row_name(ws, row, mapping) if kind != "admin-delete" else ""
         if not changes:
             # Idempotent submissions are successful, not conflicts. This can happen
             # when the authoritative workbook already contains an edit that the

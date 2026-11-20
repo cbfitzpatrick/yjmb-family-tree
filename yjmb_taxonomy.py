@@ -316,21 +316,82 @@ _POSITION_NOISE = re.compile(
 )
 
 
-def position_year_icon_flags(text: object) -> list[str]:
-    """Derive card icon categories from the workbook's ``Position and Year``.
+LEADERSHIP_ICON_CATEGORY_LABELS = {
+    "drum-major": "Drum Major",
+    "section-leader": "Section Leader",
+    "guard-captain": "Guard Captain",
+    "rat-parent": "RAT Parent",
+    "mcm": "MCM",
+    "libraries": "Libraries",
+    "uniforms": "Uniforms",
+    "band-club": "Band Club",
+    "informal-leadership": "Informal Leadership",
+    "other-leadership": "Other Leadership",
+    "none": "No icon / not leadership",
+}
 
-    Years may appear before or after a title (``2022 RAT Parent`` or
-    ``Section Leader 2022``), may be ranges, and entries may be separated by
-    semicolons/newlines. Known leadership titles get their dedicated icon.
-    Band Club entries get the Band Club icon. Recognizable informal titles,
-    including Dohmeister, get the informal-leadership icon. Any other non-empty
-    position title gets the generic other-leadership icon without needing a
-    separate workbook classification column.
+LEADERSHIP_ICON_CATEGORIES = tuple(LEADERSHIP_ICON_CATEGORY_LABELS)
+
+
+def leadership_title_key(value: object) -> str:
+    """Stable case/spacing-insensitive key for an extracted position title."""
+    return key(value)
+
+
+def position_title_from_entry(entry: object) -> str:
+    """Strip year/date scaffolding from one Position and Year entry."""
+    raw = norm(entry)
+    if not raw:
+        return ""
+    title = _YEARISH.sub(" ", raw)
+    title = re.sub(r"\b(?:served\s+as|serve(?:d)?\s+as)\b", " ", title, flags=re.I)
+    title = re.sub(r"^[\s\-–—:;,|/]+|[\s\-–—:;,|/]+$", "", title)
+    title = re.sub(r"\s+", " ", title).strip()
+    return title
+
+
+def position_year_titles(text: object) -> list[str]:
+    """Return unique human-readable titles found in Position and Year.
+
+    Entries may be comma/semicolon/pipe/newline separated. Years and year ranges
+    are removed, while the position wording itself is preserved for Admin
+    taxonomy review (for example ``2024 Dohmeister`` -> ``Dohmeister``).
     """
     raw = norm(text)
     if not raw:
         return []
+    return _dedupe(
+        position_title_from_entry(entry)
+        for entry in _POSITION_YEAR_SPLIT.split(raw)
+        if position_title_from_entry(entry)
+    )
 
+
+def normalize_leadership_category(value: object) -> str:
+    raw = norm(value).casefold().replace("_", "-").replace(" ", "-")
+    aliases = {
+        "": "",
+        "automatic": "",
+        "auto": "",
+        "no-icon": "none",
+        "not-leadership": "none",
+        "informal": "informal-leadership",
+        "other": "other-leadership",
+        "bandclub": "band-club",
+        "ratparent": "rat-parent",
+        "sectionleader": "section-leader",
+        "guardcaptain": "guard-captain",
+        "drummajor": "drum-major",
+    }
+    raw = aliases.get(raw, raw)
+    return raw if raw in LEADERSHIP_ICON_CATEGORY_LABELS else ""
+
+
+def automatic_position_title_categories(title: object) -> list[str]:
+    """Return built-in icon category/categories for one extracted title."""
+    entry = norm(title)
+    if not entry:
+        return []
     found: list[str] = []
     explicit = (
         ("Section Leader", "section-leader"),
@@ -342,40 +403,50 @@ def position_year_icon_flags(text: object) -> list[str]:
         ("Uniforms", "uniforms"),
     )
     explicit_roles = {role for role, _ in explicit}
+    matched_roles = [role for role, pattern in FORMAL_PATTERNS if pattern.search(entry)]
+    for role, flag in explicit:
+        if role in matched_roles:
+            found.append(flag)
+    if any(role not in explicit_roles for role in matched_roles):
+        found.append("other-leadership")
+    if _BAND_CLUB_PATTERN.search(entry):
+        found.append("band-club")
+    if any(pattern.search(entry) for _, pattern in INFORMAL_PATTERNS) or re.search(r"\binformal(?:\s+leadership)?\b", entry, re.I):
+        found.append("informal-leadership")
+    return _dedupe(found)
 
+
+def position_year_icon_flags(text: object, overrides: dict[str, str] | None = None) -> list[str]:
+    """Derive card icon categories from ``Position and Year``.
+
+    ``overrides`` maps normalized title keys to a category chosen in Admin Mode.
+    An override replaces built-in classification for that one title. ``none``
+    intentionally suppresses an icon. Unknown titles fall back to Other
+    Leadership so historical positions remain visible until an administrator
+    classifies them more specifically.
+    """
+    raw = norm(text)
+    if not raw:
+        return []
+    override_map = {leadership_title_key(k): normalize_leadership_category(v) for k, v in (overrides or {}).items()}
+    found: list[str] = []
     for entry in filter(None, (_e.strip() for _e in _POSITION_YEAR_SPLIT.split(raw))):
-        matched_roles = [role for role, pattern in FORMAL_PATTERNS if pattern.search(entry)]
-        entry_recognized = False
-        for role, flag in explicit:
-            if role in matched_roles:
-                found.append(flag)
-                entry_recognized = True
-        if any(role not in explicit_roles for role in matched_roles):
+        title = position_title_from_entry(entry)
+        title_key = leadership_title_key(title)
+        override = override_map.get(title_key, "")
+        if override:
+            if override != "none":
+                found.append(override)
+            continue
+        automatic = automatic_position_title_categories(title or entry)
+        if automatic:
+            found.extend(automatic)
+            continue
+        residual = _POSITION_NOISE.sub(" ", title or entry)
+        residual = re.sub(r"[()\[\]{},:/+_-]+", " ", residual)
+        residual = re.sub(r"\s+", " ", residual).strip()
+        if re.search(r"[A-Za-z]", residual):
             found.append("other-leadership")
-            entry_recognized = True
-
-        band_club = bool(_BAND_CLUB_PATTERN.search(entry))
-        if band_club:
-            found.append("band-club")
-            entry_recognized = True
-
-        informal = bool(informal_roles_from_text(entry) and any(pattern.search(entry) for _, pattern in INFORMAL_PATTERNS))
-        if informal or re.search(r"\binformal(?:\s+leadership)?\b", entry, re.I):
-            found.append("informal-leadership")
-            entry_recognized = True
-
-        # If no known title matched, treat remaining non-date text as a real
-        # historical position rather than throwing it away. Position and Year
-        # is explicitly the workbook's position field, so this is safer than
-        # requiring another classification column.
-        if not entry_recognized:
-            residual = _YEARISH.sub(" ", entry)
-            residual = _POSITION_NOISE.sub(" ", residual)
-            residual = re.sub(r"[()\[\]{},:/+_-]+", " ", residual)
-            residual = re.sub(r"\s+", " ", residual).strip()
-            if re.search(r"[A-Za-z]", residual):
-                found.append("other-leadership")
-
     return _dedupe(found)
 
 def extract_roles_from_notes(text: object) -> tuple[list[str], list[str]]:

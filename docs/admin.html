@@ -40,6 +40,7 @@
         <button class="admin-tab" type="button" data-admin-tab="requests" aria-selected="false">Change Requests</button>
         <button class="admin-tab" type="button" data-admin-tab="reciprocity" aria-selected="false">Unreciprocated</button>
         <button class="admin-tab" type="button" data-admin-tab="unknown" aria-selected="false">Unknown Instruments</button>
+        <button class="admin-tab" type="button" data-admin-tab="leadership" aria-selected="false">Leadership Taxonomy</button>
         <button class="admin-tab" type="button" data-admin-tab="features" aria-selected="false">Feature Preview</button>
         <button class="admin-tab" type="button" data-admin-tab="changelog" aria-selected="false">Changelog / Revert</button>
       </nav>
@@ -101,6 +102,34 @@
         </div>
         <p>Review instrument/section text that the taxonomy could not confidently categorize. “Drumline” is Battery and “Pit” is Front Ensemble.</p>
         <div id="admin-unknown-list" class="admin-list"></div>
+      </section>
+
+      <section class="admin-panel" data-admin-panel="leadership" hidden>
+        <div class="admin-toolbar admin-leadership-toolbar">
+          <input id="admin-leadership-search" type="search" placeholder="Filter position titles…">
+          <select id="admin-leadership-filter" aria-label="Filter leadership category">
+            <option value="all">All categories</option>
+            <option value="review">Needs classification</option>
+            <option value="drum-major">Drum Major</option>
+            <option value="section-leader">Section Leader</option>
+            <option value="guard-captain">Guard Captain</option>
+            <option value="rat-parent">RAT Parent</option>
+            <option value="mcm">MCM</option>
+            <option value="libraries">Libraries</option>
+            <option value="uniforms">Uniforms</option>
+            <option value="band-club">Band Club</option>
+            <option value="informal-leadership">Informal Leadership</option>
+            <option value="other-leadership">Other Leadership</option>
+            <option value="none">No icon / not leadership</option>
+          </select>
+          <button id="admin-leadership-refresh" class="secondary-button" type="button">Refresh scan</button>
+          <button id="admin-leadership-save" class="primary-button" type="button">Save classifications</button>
+          <span id="admin-leadership-dirty">0 unsaved</span>
+        </div>
+        <p>Every unique title is scrubbed from <strong>Position and Year</strong> across the protected tree data. Primary titles are recognized automatically. For historical or local titles that do not match a primary rule, choose the icon subcategory here instead of changing source code.</p>
+        <p class="admin-taxonomy-help">Choosing <strong>Automatic/default</strong> removes an Admin override. <strong>No icon / not leadership</strong> explicitly suppresses a badge for that title. Saved changes are stored in the protected workbook and applied to every matching title after the automatic rebuild.</p>
+        <div id="admin-leadership-summary" class="admin-leadership-summary"></div>
+        <div id="admin-leadership-table-wrap" class="admin-table-wrap"></div>
       </section>
 
       <section class="admin-panel" data-admin-panel="features" hidden>

@@ -1,7 +1,7 @@
 'use strict';
 
 (() => {
-  const RELEASE = 'v19.1.2';
+  const RELEASE = 'v19.1.3';
   const STORAGE_KEY = 'yjmbReleaseNoticeDismissedVersion';
   const SESSION_KEY = `yjmbReleaseNoticeSeen:${RELEASE}`;
   try {
@@ -11,6 +11,15 @@
   }
 
   const VERSION_SECTIONS = [
+    {
+      version: 'v19.1.3',
+      items: [
+        'Admin Mode now includes a Leadership Taxonomy view built from every unique title found in Position and Year.',
+        'Titles that do not match a built-in primary leadership rule can be assigned to an icon subcategory without editing source code.',
+        'Leadership classifications are stored in a hidden protected-workbook taxonomy sheet and apply to every matching title on future rebuilds.',
+        'Administrators can restore a title to automatic classification or explicitly mark it as No icon / not leadership.',
+      ],
+    },
     {
       version: 'v19.1.2',
       items: [
@@ -82,7 +91,7 @@
         </div>
         <div class="release-notice-actions">
           <button class="secondary-button" type="button" data-release-close>Continue</button>
-          <button class="primary-button" type="button" data-release-dismiss>Don’t show again for v19.1.2</button>
+          <button class="primary-button" type="button" data-release-dismiss>Don’t show again for v19.1.3</button>
         </div>
       </div>`;
     document.body.appendChild(dialog);

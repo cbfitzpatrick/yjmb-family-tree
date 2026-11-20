@@ -110,6 +110,15 @@ function positionYearIconKinds(text) {
   return out;
 }
 
+function personCardIconKinds(person) {
+  if (Array.isArray(person?.leadershipIcons)) {
+    const kinds = [...person.leadershipIcons];
+    if (person.bandClubLeadership && !kinds.includes('band-club')) kinds.push('band-club');
+    return [...new Set(kinds)];
+  }
+  return positionYearIconKinds(positionAndYearValue(person));
+}
+
 const ASSET_RELOAD_FILES = ['shako_buzz_transparent.png', 'favicon.ico', 'styles.css', 'app.js', 'secure-data.js', 'developer-export.js', 'admin-mail.js', ...Object.values(ROLE_ICON_ASSETS)];
 
 function normalizeSearch(value) {
@@ -547,17 +556,17 @@ function renderCards(data) {
       secondLine.textContent = parts.family;
       name.appendChild(secondLine);
     }
-    const hasCardIcons = Boolean(data.cardIconsEnabled && positionYearIconKinds(positionAndYearValue(person)).length);
+    const hasCardIcons = Boolean(data.cardIconsEnabled && personCardIconKinds(person).length);
     name.style.fontSize = `${cardNameFontSize(parts, card.width, hasCardIcons)}px`;
     builtCard.classList.toggle('has-card-icons', hasCardIcons);
     builtCard.appendChild(name);
 
-    // All card icons remain disabled for normal viewers for now. The role-specific icon assets and
-    // SVG definitions are prepared so they can be enabled later without another
-    // data migration. RAT Parent uses the supplied cap artwork; current RAT is
-    // deliberately not represented by that icon.
+    // Card-role icons are derived from the protected generator output. v19.1.3
+    // allows Admin Mode to classify local/historical Position and Year titles
+    // without changing source code. RAT Parent uses the supplied cap artwork;
+    // current RAT is deliberately not represented by that icon.
     if (data.cardIconsEnabled) {
-      const iconKinds = positionYearIconKinds(positionAndYearValue(person));
+      const iconKinds = personCardIconKinds(person);
       const icons = iconKinds.map(cardIconElement);
       assignCardIconSlots(icons);
       for (const icon of icons) builtCard.appendChild(icon);

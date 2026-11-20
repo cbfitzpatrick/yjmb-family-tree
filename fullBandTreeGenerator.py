@@ -43,7 +43,15 @@ from typing import Iterable, Iterator, Sequence
 from openpyxl import load_workbook
 from PIL import Image, ImageDraw, ImageFont
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from yjmb_taxonomy import leadership_icon_flags, position_year_icon_flags, truthy
+from yjmb_taxonomy import (
+    automatic_position_title_categories,
+    leadership_icon_flags,
+    leadership_title_key,
+    normalize_leadership_category,
+    position_year_icon_flags,
+    position_year_titles,
+    truthy,
+)
 
 # Large full-band charts can exceed Pillow's default decompression warning size.
 Image.MAX_IMAGE_PIXELS = None
@@ -73,6 +81,36 @@ CONNECTOR_WIDTH = 9
 # v17.4 restores the historical single gray connector stroke.
 CONNECTOR_OUTLINE_COLOR = None
 CONNECTOR_OUTLINE_EXTRA = 0
+
+LEADERSHIP_TAXONOMY_SHEET = "Leadership Taxonomy"
+LEADERSHIP_TAXONOMY_OVERRIDES: dict[str, str] = {}
+LEADERSHIP_TAXONOMY_ENTRIES: list[dict[str, str]] = []
+
+
+def load_leadership_taxonomy(workbook) -> tuple[dict[str, str], list[dict[str, str]]]:
+    """Load Admin-defined title classifications from the protected workbook."""
+    if LEADERSHIP_TAXONOMY_SHEET not in workbook.sheetnames:
+        return {}, []
+    ws = workbook[LEADERSHIP_TAXONOMY_SHEET]
+    headers = {normalize_spaces(ws.cell(1, col).value).casefold(): col for col in range(1, ws.max_column + 1)}
+    title_col = headers.get("title")
+    category_col = headers.get("category")
+    if not title_col or not category_col:
+        return {}, []
+    overrides: dict[str, str] = {}
+    entries: list[dict[str, str]] = []
+    for row in range(2, ws.max_row + 1):
+        title = normalize_spaces(ws.cell(row, title_col).value)
+        category = normalize_leadership_category(ws.cell(row, category_col).value)
+        if not title or not category:
+            continue
+        title_key = leadership_title_key(title)
+        if not title_key:
+            continue
+        overrides[title_key] = category
+        entries.append({"title": title, "key": title_key, "category": category})
+    entries.sort(key=lambda item: item["title"].casefold())
+    return overrides, entries
 UNKNOWN_COLOR = "#D3D3D3"
 DIVIDER_COLOR = "#555555"
 BACKGROUND_HEADER_COLOR = "#B3A369"
@@ -901,7 +939,7 @@ class Person:
     def band_club_leadership(self) -> bool:
         position = self.position_and_year
         if position:
-            return "band-club" in position_year_icon_flags(position)
+            return "band-club" in position_year_icon_flags(position, LEADERSHIP_TAXONOMY_OVERRIDES)
         # Compatibility only for old rows whose Position and Year is blank.
         return bool(
             truthy(self.source_field_value("Served in Band Club Leadership Position", "Band Club Leadership"))
@@ -936,7 +974,7 @@ class Person:
         # v19.1: Position and Year is authoritative for card icons.
         position = self.position_and_year
         if position:
-            return [flag for flag in position_year_icon_flags(position) if flag != "band-club"]
+            return [flag for flag in position_year_icon_flags(position, LEADERSHIP_TAXONOMY_OVERRIDES) if flag != "band-club"]
 
         # Compatibility only for historical rows that have not yet had their
         # old leadership metadata consolidated into Position and Year.
@@ -1213,6 +1251,9 @@ def load_people(
             raise TreeDataError(
                 f"Worksheet {sheet_name!r} not found. Available sheets: {workbook.sheetnames}"
             )
+    global LEADERSHIP_TAXONOMY_OVERRIDES, LEADERSHIP_TAXONOMY_ENTRIES
+    LEADERSHIP_TAXONOMY_OVERRIDES, LEADERSHIP_TAXONOMY_ENTRIES = load_leadership_taxonomy(workbook)
+
     ws = workbook[sheet_name]
     header_row, mapping, rat_columns = discover_headers(ws)
     ordered_headers = [
@@ -2785,8 +2826,27 @@ def scene_to_web_data(
             }
         )
 
+    leadership_title_index: dict[str, dict[str, object]] = {}
+    for person in scene.people:
+        for title in position_year_titles(person.position_and_year):
+            title_key = leadership_title_key(title)
+            if not title_key:
+                continue
+            item = leadership_title_index.setdefault(title_key, {
+                "title": title,
+                "key": title_key,
+                "count": 0,
+                "samplePeople": [],
+                "automaticCategories": automatic_position_title_categories(title),
+                "overrideCategory": LEADERSHIP_TAXONOMY_OVERRIDES.get(title_key, ""),
+            })
+            item["count"] = int(item["count"]) + 1
+            samples = item["samplePeople"]
+            if isinstance(samples, list) and len(samples) < 4 and person.card_display_name not in samples:
+                samples.append(person.card_display_name)
+
     return {
-        "schemaVersion": 10,
+        "schemaVersion": 11,
         "sceneId": scene.scene_id,
         "title": scene.title,
         "width": scene.width,
@@ -2800,6 +2860,8 @@ def scene_to_web_data(
         "sectionColors": SECTION_COLORS,
         "sectionGradients": {section: list(colors) for section, colors in SECTION_GRADIENTS.items()},
         "cardIconsEnabled": CARD_ICONS_ENABLED,
+        "leadershipTaxonomy": LEADERSHIP_TAXONOMY_ENTRIES,
+        "leadershipTitleIndex": sorted(leadership_title_index.values(), key=lambda item: str(item["title"]).casefold()),
         "yearBands": [
             {"label": label, "y": y, "color": color, "textColor": text_color}
             for label, y, color, text_color in year_band_labels(scene)

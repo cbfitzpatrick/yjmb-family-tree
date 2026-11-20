@@ -13,6 +13,7 @@ const state = {
   previewCardIcons: false,
   previewIconGuides: false,
   previewLabIcons: new Set(['section-leader']),
+  leadershipChanges: new Map(),
 };
 
 const ADMIN_HEADERS = () => ({ 'X-Developer-Key': state.adminKey });
@@ -30,6 +31,22 @@ const ROLE_ICON_ASSETS = Object.freeze({
   'other-leadership': 'icons/other-leadership-icon.png',
   'band-club': 'icons/band-club-icon.png',
 });
+
+const LEADERSHIP_CATEGORY_OPTIONS = Object.freeze([
+  ['', 'Automatic/default'],
+  ['drum-major', 'Drum Major'],
+  ['section-leader', 'Section Leader'],
+  ['guard-captain', 'Guard Captain'],
+  ['rat-parent', 'RAT Parent'],
+  ['mcm', 'MCM'],
+  ['libraries', 'Libraries'],
+  ['uniforms', 'Uniforms'],
+  ['band-club', 'Band Club'],
+  ['informal-leadership', 'Informal Leadership'],
+  ['other-leadership', 'Other Leadership'],
+  ['none', 'No icon / not leadership'],
+]);
+const LEADERSHIP_CATEGORY_LABELS = Object.freeze(Object.fromEntries(LEADERSHIP_CATEGORY_OPTIONS.filter(([key]) => key)));
 
 const RETIRED_LEADERSHIP_FIELD_KEYS = new Set([
   'marchingbandleadershiproles',
@@ -50,6 +67,61 @@ function positionAndYearValue(person) {
   if (String(person?.positionAndYear || '').trim()) return String(person.positionAndYear).trim();
   const field = (person?.sourceFields || []).find((item) => normalizedFieldKey(item?.label) === 'positionandyear');
   return String(field?.value || '').trim();
+}
+
+function leadershipTitleKey(value) {
+  return String(value || '').normalize('NFKD').toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+function positionTitleFromEntry(entry) {
+  return String(entry || '')
+    .replace(/\b(?:spring|summer|fall|autumn|winter)?\s*(?:19|20)\d{2}(?:\s*(?:-|–|—|to|through|thru)\s*(?:19|20)?\d{2})?\b/gi, ' ')
+    .replace(/\b(?:served\s+as|serve(?:d)?\s+as)\b/gi, ' ')
+    .replace(/^[\s\-–—:;,|/]+|[\s\-–—:;,|/]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function positionYearTitles(text) {
+  const seen = new Set();
+  const out = [];
+  for (const entry of String(text || '').split(/[;,|\n]+/)) {
+    const title = positionTitleFromEntry(entry);
+    const key = leadershipTitleKey(title);
+    if (!title || !key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(title);
+  }
+  return out;
+}
+
+function automaticLeadershipCategories(title) {
+  const entry = String(title || '').trim();
+  const out = [];
+  const add = (kind) => { if (!out.includes(kind)) out.push(kind); };
+  const tests = [
+    [/\bsection\s+leaders?\b/i, 'section-leader'],
+    [/\b(?:color\s+guard\s+)?guard\s+captains?\b|\bcolor\s+guard\s+captains?\b/i, 'guard-captain'],
+    [/\bdrum\s+majors?\b/i, 'drum-major'],
+    [/\brat\s+(?:parents?|moms?|dads?)\b/i, 'rat-parent'],
+    [/\bmcm\b/i, 'mcm'],
+    [/\blibraries?\b|\blibrary\b/i, 'libraries'],
+    [/\buniforms?\b/i, 'uniforms'],
+  ];
+  for (const [pattern, kind] of tests) if (pattern.test(entry)) add(kind);
+  if (/\b(?:yellow\s+jacket\s+)?band\s+club\b|\byjbc\b/i.test(entry)) add('band-club');
+  if (/\bhype[\s-]*(?:man|men|person|people|woman|women|guy|girl)\b|\bhypeman\b|\bdoh[\s-]*meisters?\b|\binformal(?:\s+leadership)?\b/i.test(entry)) add('informal-leadership');
+  if (/\bstaff\s+(?:assistants?|ass(?:\.|\b))|\boperations?\b|\bops\b|\bprops?\b/i.test(entry)) add('other-leadership');
+  return out;
+}
+
+function leadershipTaxonomyMap() {
+  const map = new Map();
+  for (const item of state.data?.leadershipTaxonomy || []) {
+    const key = item?.key || leadershipTitleKey(item?.title);
+    if (key && item?.category) map.set(key, item.category);
+  }
+  return map;
 }
 
 function positionYearIconKinds(text) {
@@ -232,6 +304,11 @@ function adminCardIconElement(kind, sample = false) {
 }
 
 function personPreviewIconKinds(person) {
+  if (Array.isArray(person?.leadershipIcons)) {
+    const kinds = [...person.leadershipIcons];
+    if (person.bandClubLeadership && !kinds.includes('band-club')) kinds.push('band-club');
+    return kinds;
+  }
   return positionYearIconKinds(positionAndYearValue(person));
 }
 
@@ -742,6 +819,165 @@ function renderSampleIconToggles() {
   }
 }
 
+function leadershipCategoryLabel(category) {
+  return LEADERSHIP_CATEGORY_LABELS[category] || category || 'Automatic/default';
+}
+
+function leadershipTitleRows() {
+  const generated = Array.isArray(state.data?.leadershipTitleIndex) ? state.data.leadershipTitleIndex : [];
+  if (generated.length) return generated.map((item) => ({ ...item }));
+
+  const rows = new Map();
+  for (const person of state.data?.people || []) {
+    for (const title of positionYearTitles(positionAndYearValue(person))) {
+      const key = leadershipTitleKey(title);
+      if (!key) continue;
+      if (!rows.has(key)) rows.set(key, {
+        title, key, count: 0, samplePeople: [], automaticCategories: automaticLeadershipCategories(title), overrideCategory: '',
+      });
+      const item = rows.get(key);
+      item.count += 1;
+      const name = norm(person.displayName || person.name);
+      if (name && item.samplePeople.length < 4 && !item.samplePeople.includes(name)) item.samplePeople.push(name);
+    }
+  }
+  const overrides = leadershipTaxonomyMap();
+  for (const item of rows.values()) item.overrideCategory = overrides.get(item.key) || '';
+  return [...rows.values()].sort((a, b) => String(a.title).localeCompare(String(b.title)));
+}
+
+function currentLeadershipOverride(item) {
+  if (state.leadershipChanges.has(item.key)) return state.leadershipChanges.get(item.key).category;
+  const live = leadershipTaxonomyMap().get(item.key);
+  return live !== undefined ? live : (item.overrideCategory || '');
+}
+
+function leadershipRowCategory(item) {
+  const override = currentLeadershipOverride(item);
+  if (override) return override;
+  const automatic = item.automaticCategories?.length ? item.automaticCategories : automaticLeadershipCategories(item.title);
+  return automatic[0] || 'other-leadership';
+}
+
+function updateLeadershipDirtyCount() {
+  const el = q('#admin-leadership-dirty');
+  if (el) el.textContent = `${state.leadershipChanges.size} unsaved`;
+}
+
+function renderLeadershipTaxonomy() {
+  const host = q('#admin-leadership-table-wrap');
+  if (!host) return;
+  const search = lower(q('#admin-leadership-search')?.value);
+  const filter = q('#admin-leadership-filter')?.value || 'all';
+  const rows = leadershipTitleRows();
+  const summaryCounts = new Map();
+  let reviewCount = 0;
+  for (const item of rows) {
+    const override = currentLeadershipOverride(item);
+    const automatic = item.automaticCategories?.length ? item.automaticCategories : automaticLeadershipCategories(item.title);
+    const effective = override || automatic[0] || 'other-leadership';
+    summaryCounts.set(effective, (summaryCounts.get(effective) || 0) + 1);
+    if (!override && !automatic.length) reviewCount += 1;
+  }
+  const summary = q('#admin-leadership-summary');
+  if (summary) {
+    summary.replaceChildren();
+    const chips = [
+      ['Unique titles', rows.length],
+      ['Needs classification', reviewCount],
+      ...[...summaryCounts.entries()].map(([category, count]) => [leadershipCategoryLabel(category), count]),
+    ];
+    for (const [label, count] of chips) {
+      const chip = document.createElement('span'); chip.className = 'admin-taxonomy-chip'; chip.textContent = `${label}: ${count}`; summary.appendChild(chip);
+    }
+  }
+
+  const table = document.createElement('table'); table.className = 'admin-table admin-taxonomy-table';
+  const thead = document.createElement('thead');
+  const headRow = document.createElement('tr');
+  for (const label of ['Position title', 'Uses', 'Built-in match', 'Admin subcategory', 'Example people']) {
+    const th = document.createElement('th'); th.textContent = label; headRow.appendChild(th);
+  }
+  thead.appendChild(headRow); table.appendChild(thead);
+  const tbody = document.createElement('tbody');
+  let shown = 0;
+  for (const item of rows) {
+    const title = String(item.title || '');
+    const override = currentLeadershipOverride(item);
+    const automatic = item.automaticCategories?.length ? item.automaticCategories : automaticLeadershipCategories(title);
+    const effective = override || automatic[0] || 'other-leadership';
+    const needsReview = !override && !automatic.length;
+    const hay = lower(`${title} ${(item.samplePeople || []).join(' ')} ${leadershipCategoryLabel(effective)}`);
+    if (search && !hay.includes(search)) continue;
+    if (filter === 'review' && !needsReview) continue;
+    if (filter !== 'all' && filter !== 'review' && effective !== filter) continue;
+    shown += 1;
+    const tr = document.createElement('tr');
+    if (needsReview) tr.classList.add('admin-taxonomy-review');
+    if (override) tr.classList.add('admin-taxonomy-overridden');
+
+    const titleTd = document.createElement('td');
+    const titleStrong = document.createElement('div'); titleStrong.className = 'admin-taxonomy-title'; titleStrong.textContent = title; titleTd.appendChild(titleStrong);
+    const keyText = document.createElement('div'); keyText.className = 'admin-taxonomy-auto'; keyText.textContent = item.key || leadershipTitleKey(title); titleTd.appendChild(keyText);
+    tr.appendChild(titleTd);
+
+    const countTd = document.createElement('td'); countTd.textContent = String(item.count || 0); tr.appendChild(countTd);
+    const autoTd = document.createElement('td'); autoTd.className = 'admin-taxonomy-auto';
+    autoTd.textContent = automatic.length ? automatic.map(leadershipCategoryLabel).join(', ') : 'No primary match → Other Leadership fallback';
+    tr.appendChild(autoTd);
+
+    const selectTd = document.createElement('td');
+    const select = document.createElement('select'); select.dataset.leadershipTitleKey = item.key || leadershipTitleKey(title); select.dataset.leadershipTitle = title;
+    for (const [value, label] of LEADERSHIP_CATEGORY_OPTIONS) {
+      const option = document.createElement('option'); option.value = value; option.textContent = label; select.appendChild(option);
+    }
+    select.value = override;
+    select.addEventListener('change', () => {
+      const liveStored = leadershipTaxonomyMap().get(item.key);
+      const stored = liveStored !== undefined ? liveStored : (item.overrideCategory || '');
+      const value = select.value;
+      if (value === stored) state.leadershipChanges.delete(item.key);
+      else state.leadershipChanges.set(item.key, { title, category: value });
+      updateLeadershipDirtyCount();
+    });
+    selectTd.appendChild(select); tr.appendChild(selectTd);
+
+    const sampleTd = document.createElement('td'); sampleTd.className = 'admin-taxonomy-samples'; sampleTd.textContent = (item.samplePeople || []).join(', ') || '—'; tr.appendChild(sampleTd);
+    tbody.appendChild(tr);
+  }
+  if (!shown) {
+    const tr = document.createElement('tr'); const td = document.createElement('td'); td.colSpan = 5; td.textContent = 'No position titles match this filter.'; tr.appendChild(td); tbody.appendChild(tr);
+  }
+  table.appendChild(tbody); host.replaceChildren(table); updateLeadershipDirtyCount();
+}
+
+async function saveLeadershipTaxonomy() {
+  if (!state.leadershipChanges.size) { status('No leadership classifications have changed.'); return; }
+  const assignments = [...state.leadershipChanges.values()];
+  try {
+    status(`Queuing ${assignments.length} leadership taxonomy classification${assignments.length === 1 ? '' : 's'}…`);
+    await adminApi('/admin/action', { method: 'POST', body: JSON.stringify({ payload: { kind: 'admin-leadership-taxonomy', assignments } }) });
+    const map = leadershipTaxonomyMap();
+    for (const item of assignments) {
+      const key = leadershipTitleKey(item.title);
+      if (item.category) map.set(key, item.category); else map.delete(key);
+    }
+    const currentRows = leadershipTitleRows();
+    state.data.leadershipTaxonomy = [...map.entries()].map(([key, category]) => {
+      const original = currentRows.find((item) => item.key === key);
+      return { key, title: original?.title || key, category };
+    });
+    if (Array.isArray(state.data.leadershipTitleIndex)) {
+      for (const item of state.data.leadershipTitleIndex) item.overrideCategory = map.get(item.key) || '';
+    }
+    state.leadershipChanges.clear();
+    renderLeadershipTaxonomy();
+    status('Leadership classifications queued. The protected workbook and all matching cards will rebuild automatically; changes can take a few minutes to appear.');
+  } catch (error) {
+    status(error.message, true);
+  }
+}
+
 function renderFeaturePreview() {
   renderSampleIconToggles();
   renderSampleFeatureCard();
@@ -763,6 +999,7 @@ function selectTab(name) {
   if (name === 'requests') loadRequests();
   if (name === 'reciprocity') renderReciprocity();
   if (name === 'unknown') renderUnknown();
+  if (name === 'leadership') renderLeadershipTaxonomy();
   if (name === 'features') renderFeaturePreview();
   if (name === 'changelog') loadChangelog();
 }
@@ -803,6 +1040,10 @@ function bind() {
   q('#admin-refresh-requests').addEventListener('click', loadRequests);
   q('#admin-refresh-reciprocity').addEventListener('click', renderReciprocity);
   q('#admin-refresh-unknown').addEventListener('click', renderUnknown);
+  q('#admin-leadership-search')?.addEventListener('input', renderLeadershipTaxonomy);
+  q('#admin-leadership-filter')?.addEventListener('change', renderLeadershipTaxonomy);
+  q('#admin-leadership-save')?.addEventListener('click', saveLeadershipTaxonomy);
+  q('#admin-leadership-refresh')?.addEventListener('click', renderLeadershipTaxonomy);
   q('#admin-refresh-changelog').addEventListener('click', loadChangelog);
   q('#admin-preview-icons')?.addEventListener('change', (event) => { state.previewCardIcons = event.target.checked; renderAdminTree(); renderFeaturePreview(); });
   q('#admin-preview-icon-guides')?.addEventListener('change', (event) => { state.previewIconGuides = event.target.checked; renderAdminTree(); });
