@@ -274,11 +274,11 @@ def truthy(value: object) -> bool:
 
 
 def leadership_icon_flags(formal_text: object, informal_text: object, informal_flag: object = "") -> list[str]:
-    """Return future card-icon categories for the person's leadership roles.
+    """Compatibility parser for legacy protected rows.
 
-    Card icons are deliberately disabled in the v17.5 browser renderer, but the
-    role-specific flags remain in protected structured data so the prepared icon
-    assets can be enabled later without another workbook migration.
+    v19.1 derives normal card icons from ``Position and Year`` instead.  This
+    helper remains so older rows/submissions can be interpreted without losing
+    previously entered leadership information during the transition.
     """
     formal = canonical_formal_roles(formal_text)
     flags: list[str] = []
@@ -301,6 +301,81 @@ def leadership_icon_flags(formal_text: object, informal_text: object, informal_f
         flags.append("other-leadership")
     return flags
 
+
+_BAND_CLUB_PATTERN = re.compile(r"\b(?:yellow\s+jacket\s+)?band\s+club\b|\byjbc\b", re.I)
+_POSITION_YEAR_SPLIT = re.compile(r"[;|\n]+")
+_YEARISH = re.compile(
+    r"\b(?:spring|summer|fall|autumn|winter)?\s*(?:19|20)\d{2}"
+    r"(?:\s*(?:-|–|—|to|through|thru)\s*(?:19|20)?\d{2})?\b",
+    re.I,
+)
+_POSITION_NOISE = re.compile(
+    r"\b(?:position|positions|year|years|marching\s+band|leadership|served\s+as|serve(?:d)?\s+as)\b",
+    re.I,
+)
+
+
+def position_year_icon_flags(text: object) -> list[str]:
+    """Derive card icon categories from the workbook's ``Position and Year``.
+
+    Years may appear before or after a title (``2022 RAT Parent`` or
+    ``Section Leader 2022``), may be ranges, and entries may be separated by
+    semicolons/newlines. Known leadership titles get their dedicated icon.
+    Band Club entries get the Band Club icon. Recognizable informal titles get
+    the informal icon. Any other non-empty position title gets the generic
+    other-leadership icon, which intentionally covers historical titles such as
+    Dohmeister without needing another workbook column.
+    """
+    raw = norm(text)
+    if not raw:
+        return []
+
+    found: list[str] = []
+    explicit = (
+        ("Section Leader", "section-leader"),
+        ("Guard Captain", "guard-captain"),
+        ("Drum Major", "drum-major"),
+        ("RAT Parent", "rat-parent"),
+        ("MCM", "mcm"),
+        ("Libraries", "libraries"),
+        ("Uniforms", "uniforms"),
+    )
+    explicit_roles = {role for role, _ in explicit}
+
+    for entry in filter(None, (_e.strip() for _e in _POSITION_YEAR_SPLIT.split(raw))):
+        matched_roles = [role for role, pattern in FORMAL_PATTERNS if pattern.search(entry)]
+        entry_recognized = False
+        for role, flag in explicit:
+            if role in matched_roles:
+                found.append(flag)
+                entry_recognized = True
+        if any(role not in explicit_roles for role in matched_roles):
+            found.append("other-leadership")
+            entry_recognized = True
+
+        band_club = bool(_BAND_CLUB_PATTERN.search(entry))
+        if band_club:
+            found.append("band-club")
+            entry_recognized = True
+
+        informal = bool(informal_roles_from_text(entry) and any(pattern.search(entry) for _, pattern in INFORMAL_PATTERNS))
+        if informal or re.search(r"\binformal(?:\s+leadership)?\b", entry, re.I):
+            found.append("informal-leadership")
+            entry_recognized = True
+
+        # If no known title matched, treat remaining non-date text as a real
+        # historical position rather than throwing it away. Position and Year
+        # is explicitly the workbook's position field, so this is safer than
+        # requiring another classification column.
+        if not entry_recognized:
+            residual = _YEARISH.sub(" ", entry)
+            residual = _POSITION_NOISE.sub(" ", residual)
+            residual = re.sub(r"[()\[\]{},:/+_-]+", " ", residual)
+            residual = re.sub(r"\s+", " ", residual).strip()
+            if re.search(r"[A-Za-z]", residual):
+                found.append("other-leadership")
+
+    return _dedupe(found)
 
 def extract_roles_from_notes(text: object) -> tuple[list[str], list[str]]:
     """Return high-confidence (formal, informal) role mentions found in note text."""

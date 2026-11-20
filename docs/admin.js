@@ -18,6 +18,81 @@ const state = {
 const ADMIN_HEADERS = () => ({ 'X-Developer-Key': state.adminKey });
 const norm = (value) => String(value ?? '').trim();
 const lower = (value) => norm(value).toLowerCase();
+const ROLE_ICON_ASSETS = Object.freeze({
+  'section-leader': 'icons/section-leader-icon.png',
+  'guard-captain': 'icons/guard-captain-icon.png',
+  'drum-major': 'icons/drum-major-icon.png',
+  'rat-parent': 'icons/rat-parent-icon.png',
+  'mcm': 'icons/mcm-icon.png',
+  'libraries': 'icons/libraries-icon.png',
+  'uniforms': 'icons/uniforms-icon.png',
+  'informal-leadership': 'icons/informal-leadership-icon.png',
+  'other-leadership': 'icons/other-leadership-icon.png',
+  'band-club': 'icons/band-club-icon.png',
+});
+
+const RETIRED_LEADERSHIP_FIELD_KEYS = new Set([
+  'marchingbandleadershiproles',
+  'servedininformalleadershipposition',
+  'informalleadershippositions',
+  'marchingbandleadershiphistory',
+  'servedinbandclubleadershipposition',
+  'bandclubleadershippositions',
+  'bandclubleadershiphistory',
+  'leadershippositionclassification',
+]);
+
+function normalizedFieldKey(label) {
+  return String(label || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+function positionAndYearValue(person) {
+  if (String(person?.positionAndYear || '').trim()) return String(person.positionAndYear).trim();
+  const field = (person?.sourceFields || []).find((item) => normalizedFieldKey(item?.label) === 'positionandyear');
+  return String(field?.value || '').trim();
+}
+
+function positionYearIconKinds(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return [];
+  const out = [];
+  const add = (kind) => { if (!out.includes(kind)) out.push(kind); };
+  const entries = raw.split(/[;|\n]+/).map((entry) => entry.trim()).filter(Boolean);
+  for (const entry of entries) {
+    let recognized = false;
+    const tests = [
+      [/\bsection\s+leaders?\b/i, 'section-leader'],
+      [/\b(?:color\s+guard\s+)?guard\s+captains?\b|\bcolor\s+guard\s+captains?\b/i, 'guard-captain'],
+      [/\bdrum\s+majors?\b/i, 'drum-major'],
+      [/\brat\s+(?:parents?|moms?|dads?)\b/i, 'rat-parent'],
+      [/\bmcm\b/i, 'mcm'],
+      [/\blibraries?\b|\blibrary\b/i, 'libraries'],
+      [/\buniforms?\b/i, 'uniforms'],
+    ];
+    for (const [pattern, kind] of tests) {
+      if (pattern.test(entry)) { add(kind); recognized = true; }
+    }
+    if (/\b(?:yellow\s+jacket\s+)?band\s+club\b|\byjbc\b/i.test(entry)) {
+      add('band-club'); recognized = true;
+    }
+    if (/\bhype[\s-]*(?:man|men|person|people|woman|women|guy|girl)\b|\bhypeman\b|\binformal(?:\s+leadership)?\b/i.test(entry)) {
+      add('informal-leadership'); recognized = true;
+    }
+    if (/\bstaff\s+(?:assistants?|ass(?:\.|\b))|\boperations?\b|\bops\b|\bprops?\b/i.test(entry)) {
+      add('other-leadership'); recognized = true;
+    }
+    if (!recognized) {
+      const residual = entry
+        .replace(/\b(?:spring|summer|fall|autumn|winter)?\s*(?:19|20)\d{2}(?:\s*(?:-|–|—|to|through|thru)\s*(?:19|20)?\d{2})?\b/gi, ' ')
+        .replace(/\b(?:position|positions|year|years|marching\s+band|leadership|served\s+as|serve(?:d)?\s+as)\b/gi, ' ')
+        .replace(/[()\[\]{},:/+_-]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (/[A-Za-z]/.test(residual)) add('other-leadership');
+    }
+  }
+  return out;
+}
 
 async function reloadAdminAssets() {
   const button = q('#admin-reload-assets');
@@ -28,7 +103,7 @@ async function reloadAdminAssets() {
       await Promise.all(keys.filter((key) => /yjmb|github|pages/i.test(key)).map((key) => caches.delete(key)));
     }
     const stamp = Date.now();
-    const files = ['styles.css', 'admin.js', 'secure-data.js', 'section-leader-icon.png', 'rat-parent-icon.png', 'band-club-icon.png'];
+    const files = ['styles.css', 'admin.js', 'secure-data.js', ...Object.values(ROLE_ICON_ASSETS)];
     await Promise.all(files.map(async (file) => {
       try {
         const url = new URL(file, window.location.href);
@@ -95,37 +170,69 @@ function adminCardFontSize(person, sourceWidth = 150, hasIcons = false) {
   if (!context) return base;
   context.font = `${base}px Arial, Helvetica, sans-serif`;
   const widest = Math.max(1, ...lines.map((line) => context.measureText(line).width));
-  const usable = Math.max(70, Number(sourceWidth || 150) - (hasIcons ? 44 : 24));
-  return Math.max(13, Math.min(base, Math.floor(base * usable / widest)));
+  const usable = Math.max(20, (Math.max(40, Number(sourceWidth) || 150)) - (hasIcons ? 42 : 18));
+  return Math.max(8.5, Math.min(base, Math.floor((base * usable / widest) * 10) / 10));
 }
 
-function inlineRoleIconSvg(kind) {
-  const icons = {
-    'drum-major': '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5c1.7-.8 3.2.2 3.6 1.7l.6 2.3.8-4.6c.2-1.2 2-1 1.9.3l-.4 5.2.9-4.3c.3-1.2 2.1-.8 1.8.4l-.9 4.3.9-3.3c.3-1.1 2-.6 1.7.5l-1.1 4.2c-.6 2.4-2 4-4 4.7l-2.8 1-2.3-6.1L4 5.5Zm16 0c-1.7-.8-3.2.2-3.6 1.7l-.6 2.3-.8-4.6c-.2-1.2-2-1-1.9.3l.4 5.2-.9-4.3c-.3-1.2-2.1-.8-1.8.4l.9 4.3-.9-3.3c.3-1.1 2-.6 1.7.5l-1.1 4.2c-.6 2.4-2 4-4 4.7l2.8 1 2.3-6.1L20 5.5Z" fill="currentColor"/></svg>',
-    'mcm': '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h4l1.3-2h5.4L16 7h4v12H4Z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="13" r="4" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
-    'libraries': '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5.5c3.2-.8 6-.2 9 1.8v12c-3-2-5.8-2.6-9-1.8Zm18 0c-3.2-.8-6-.2-9 1.8v12c3-2 5.8-2.6 9-1.8Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
-    'uniforms': '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 4 4 2 4-2 4 4-3 3v9H7v-9L4 8Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M12 6v14M9.5 10h5" stroke="currentColor" stroke-width="1.4"/></svg>',
-    'guard-captain': '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3v18M8 4l10 3-10 4Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>',
-    'informal-leadership': '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10h4l8-4v12l-8-4H4Zm4 4 2 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>',
-    'other-leadership': '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9Z" fill="none" stroke="currentColor" stroke-width="1.7"/></svg>',
+function assignCardIconSlots(elements) {
+  // v19.0: cards show at most four role icons, one per true corner.
+  // Drum Major permanently owns the upper-left corner. Section Leader /
+  // Guard Captain permanently owns the upper-right corner. Other roles fill
+  // the lower corners first and can overflow upward only into an unreserved
+  // corner. Extra roles remain available in the member details.
+  const candidates = elements.filter((el) => el && !el.hidden);
+  for (const el of elements) {
+    delete el.dataset.roleSlot;
+    el.hidden = true;
+  }
+
+  const drumMajor = candidates.find((el) => el.dataset.iconKind === 'drum-major');
+  // Guard Captain is the section-leader equivalent for Color Guard. If bad
+  // legacy data contains both roles, show the Guard Captain badge rather than
+  // stacking two badges in the same reserved corner.
+  const sectionLeader = candidates.find((el) => el.dataset.iconKind === 'guard-captain')
+    || candidates.find((el) => el.dataset.iconKind === 'section-leader');
+
+  const shown = new Set();
+  const place = (el, slot) => {
+    if (!el || shown.size >= 4) return;
+    el.dataset.roleSlot = slot;
+    el.hidden = false;
+    shown.add(el);
   };
-  return icons[kind] || '';
+
+  place(drumMajor, 'tl');
+  place(sectionLeader, 'tr');
+
+  const reservedKinds = new Set(['drum-major', 'section-leader', 'guard-captain']);
+  const overflow = candidates.filter((el) => !reservedKinds.has(el.dataset.iconKind));
+  const slots = ['bl', 'br'];
+  if (!drumMajor) slots.push('tl');
+  if (!sectionLeader) slots.push('tr');
+
+  for (const el of overflow) {
+    const slot = slots.shift();
+    if (!slot || shown.size >= 4) break;
+    place(el, slot);
+  }
 }
 
 function adminCardIconElement(kind, sample = false) {
   const wrapper = document.createElement('span');
   wrapper.className = sample ? 'admin-icon-sample-icon' : `card-status-icon card-role-icon icon-${kind}`;
-  const imageAssets = { 'section-leader': 'section-leader-icon.png', 'rat-parent': 'rat-parent-icon.png', 'band-club': 'band-club-icon.png' };
-  if (imageAssets[kind]) {
-    const img = document.createElement('img'); img.src = imageAssets[kind]; img.alt = ''; wrapper.appendChild(img);
-  } else {
-    wrapper.innerHTML = inlineRoleIconSvg(kind);
-  }
+  wrapper.dataset.iconKind = kind;
+  const asset = ROLE_ICON_ASSETS[kind];
+  if (!asset) { wrapper.hidden = true; return wrapper; }
+  const img = document.createElement('img');
+  img.src = asset;
+  img.alt = '';
+  img.decoding = 'async';
+  wrapper.appendChild(img);
   return wrapper;
 }
 
 function personPreviewIconKinds(person) {
-  return [...new Set([...(person.leadershipIcons || []), ...(person.bandClubLeadership ? ['band-club'] : [])])];
+  return positionYearIconKinds(positionAndYearValue(person));
 }
 
 function appendAdminConnectorFilter(svg) {
@@ -217,7 +324,9 @@ function renderAdminTree() {
       nameWrap.appendChild(line);
     }
     card.appendChild(nameWrap);
-    for (const kind of previewKinds) card.appendChild(adminCardIconElement(kind));
+    const icons = previewKinds.map((kind) => adminCardIconElement(kind));
+    assignCardIconSlots(icons);
+    for (const icon of icons) card.appendChild(icon);
     card.title = `${person.displayName || person.name} · ${person.ratYearLabel || '?'} · ${person.instrumentRaw || '?'}`;
     if (filter) {
       const hay = [person.name, person.displayName, person.personalNickname, person.sectionNicknames, person.ratYearLabel, person.instrumentRaw].map(lower).join(' ');
@@ -258,8 +367,9 @@ function fieldInput(field, index) {
 }
 
 function addPreferenceFields(fields, person = null) {
-  const out = fields.map((field) => ({ ...field }));
+  const out = fields.filter((field) => !RETIRED_LEADERSHIP_FIELD_KEYS.has(normalizedFieldKey(field.label))).map((field) => ({ ...field }));
   const keys = new Set(out.map((field) => lower(field.label).replace(/[^a-z0-9]+/g, '')));
+  if (!keys.has('positionandyear')) out.push({ label: 'Position and Year', value: person?.positionAndYear || '' });
   if (!keys.has('treedisplaynamepreference')) out.push({ label: 'Tree Display Name Preference', value: person?.treeDisplayNamePreference || 'Given/Preferred Name' });
   if (!keys.has('treedisplaylastnamepreference')) out.push({ label: 'Tree Display Last Name Preference', value: person?.treeDisplayLastNamePreference || 'Maiden/Family Name' });
   return out;
@@ -336,6 +446,7 @@ function allHeaders() {
   const out = [];
   const seen = new Set();
   for (const person of state.data.people) for (const field of person.sourceFields || []) {
+    if (RETIRED_LEADERSHIP_FIELD_KEYS.has(normalizedFieldKey(field.label))) continue;
     if (!seen.has(field.label)) { seen.add(field.label); out.push(field.label); }
   }
   for (const label of ['Tree Display Name Preference', 'Tree Display Last Name Preference']) {
@@ -601,7 +712,9 @@ function renderSampleFeatureCard() {
     name.appendChild(line);
   }
   host.appendChild(name);
-  for (const kind of iconKinds) host.appendChild(adminCardIconElement(kind));
+  const icons = iconKinds.map((kind) => adminCardIconElement(kind));
+  assignCardIconSlots(icons);
+  for (const icon of icons) host.appendChild(icon);
 
   const label = q('#admin-sample-section-label');
   if (label) label.textContent = `Preview category: ${section}${instrument ? ` · entered: ${instrument}` : ''}`;

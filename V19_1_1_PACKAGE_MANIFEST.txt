@@ -1,0 +1,15 @@
+YJMB Family Tree v19.1.1 patch
+
+Purpose:
+- Keep member names geometrically centered in cards regardless of which role-icon corners are occupied.
+- Apply identical centering behavior to production tree cards, Admin tree cards, and Admin Feature Preview.
+- Preserve v19.0 four-corner icon placement and v19.1 Position-and-Year parsing.
+- Advance the version notice to v19.1.1.
+
+Files:
+web_template/styles.css
+docs/styles.css
+web_template/release-notice.js
+docs/release-notice.js
+
+No workbook, encrypted tree payload, secrets, Worker configuration, or Markdown files are included.

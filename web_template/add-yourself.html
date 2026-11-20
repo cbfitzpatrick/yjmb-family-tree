@@ -4,6 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Add Yourself to the YJMB Family Tree</title>
+  <link rel="icon" type="image/png" href="shako_buzz_transparent.png?v=18-6">
+  <link rel="shortcut icon" type="image/x-icon" href="favicon.ico?v=18-6">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body class="questionnaire-page">
@@ -76,7 +78,6 @@
             </fieldset>
           </div>
 
-          <div id="existing-self-warning" class="match-panel warning-panel" hidden></div>
           <div class="wizard-actions wizard-actions-end">
             <button class="primary-button" type="button" data-next>Next</button>
           </div>
@@ -108,6 +109,8 @@
             <label><input type="radio" name="multiple-sections" value="yes"> Yes</label>
             <label><input type="radio" name="multiple-sections" value="no"> No</label>
           </fieldset>
+
+          <div id="existing-self-warning" class="match-panel warning-panel" hidden aria-live="polite"></div>
 
           <section class="question-block section-history-block">
             <h3>What section have you been in?</h3>
@@ -141,26 +144,13 @@
               </label>
             </div>
           </section>
-
-          <section class="question-block leadership-history-block">
-            <h3>Marching band leadership</h3>
-            <p class="field-help">Add each position separately. Choose Formal or Informal; year(s) are optional. Formal roles use the standard list, with Other available for anything not listed.</p>
-            <div id="leadership-entries" class="leadership-entry-list"></div>
-            <button id="add-leadership" class="secondary-button icon-button" type="button"><span aria-hidden="true">＋</span> Add leadership position</button>
-          </section>
-
-          <section class="question-block band-club-leadership-block">
-            <h3>Band Club leadership</h3>
-            <fieldset class="choice-group compact-choice-group">
-              <legend>Have you held any Band Club leadership positions?</legend>
-              <label><input type="radio" name="band-club-leadership" value="yes"> Yes</label>
-              <label><input type="radio" name="band-club-leadership" value="no"> No</label>
-            </fieldset>
-            <div id="band-club-leadership-details" hidden>
-              <p class="field-help">List the position and optionally the year or range of years.</p>
-              <div id="band-club-leadership-entries" class="leadership-entry-list"></div>
-              <button id="add-band-club-leadership" class="secondary-button icon-button" type="button"><span aria-hidden="true">＋</span> Add Band Club position</button>
-            </div>
+          <section class="question-block position-year-block">
+            <h3>Position and Year</h3>
+            <label class="form-field form-field-wide">
+              <span>Leadership/position title and year(s) <small>(optional)</small></span>
+              <textarea id="position-year" rows="3" placeholder="e.g., 2022 Section Leader; 2023 MCM; 2024 Band Club President"></textarea>
+            </label>
+            <p class="field-help">Use the existing Position and Year field for any marching-band, informal, or Band Club position. Card icons are determined automatically from the titles you enter; no separate leadership fields are required.</p>
           </section>
 
           <fieldset id="legacy-system-group" class="choice-group" hidden>

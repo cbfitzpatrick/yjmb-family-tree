@@ -11,7 +11,12 @@ const state = {
   step: 1,
   maxStep: 5,
   vetMatch: null,
-  vetRejectedId: null,
+  vetRejectedIds: new Set(),
+  vetFingerprint: '',
+  selfIdentityKey: '',
+  selfIdentityDecision: '', // '' until answered, 'merge' or 'create'
+  selfMatchedPersonId: null,
+  selfDifferentPersonIds: new Set(),
   previewConnectedToExisting: false,
   previewGraph: null,
   turnstileToken: '',
@@ -331,159 +336,6 @@ function treeCardName() {
   return [treeCardGivenName(), treeCardFamilyName()].filter(Boolean).join(' ');
 }
 
-const FORMAL_LEADERSHIP_OPTIONS = [
-  'Drum Major',
-  'Section Leader',
-  'Guard Captain',
-  'Staff Assistant',
-  'Operations',
-  'Props',
-  'Uniforms',
-  'Libraries',
-  'MCM',
-  'RAT Parent',
-  'Other',
-];
-const FORMAL_LEADERSHIP_LABELS = {
-  'Staff Assistant': 'Staff Assistant (Staff Ass)',
-  'Operations': 'Operations (Ops)',
-  'RAT Parent': 'RAT Parent (RAT Mom / RAT Dad)',
-};
-
-function addLeadershipEntry(initial = {}) {
-  const container = q('#leadership-entries');
-  const row = document.createElement('div');
-  row.className = 'leadership-entry-row';
-
-  const typeField = document.createElement('label');
-  typeField.className = 'form-field';
-  typeField.innerHTML = '<span>Type</span>';
-  const type = document.createElement('select');
-  type.className = 'leadership-type';
-  type.innerHTML = '<option value="formal">Formal</option><option value="informal">Informal</option>';
-  type.value = initial.type || 'formal';
-  typeField.appendChild(type);
-
-  const roleField = document.createElement('label');
-  roleField.className = 'form-field leadership-role-field';
-  const roleLabel = document.createElement('span');
-  roleLabel.textContent = 'Position';
-  const formal = document.createElement('select');
-  formal.className = 'leadership-formal-role';
-  for (const role of FORMAL_LEADERSHIP_OPTIONS) {
-    const option = document.createElement('option');
-    option.value = role;
-    option.textContent = FORMAL_LEADERSHIP_LABELS[role] || role;
-    formal.appendChild(option);
-  }
-  formal.value = FORMAL_LEADERSHIP_OPTIONS.includes(initial.role) ? initial.role : (initial.type === 'formal' && initial.role ? 'Other' : 'Drum Major');
-  const freeText = document.createElement('input');
-  freeText.className = 'leadership-free-role';
-  freeText.type = 'text';
-  freeText.placeholder = 'Position';
-  freeText.value = initial.type === 'informal' || formal.value === 'Other' ? (initial.role || '') : '';
-  roleField.append(roleLabel, formal, freeText);
-
-  const yearsField = document.createElement('label');
-  yearsField.className = 'form-field';
-  yearsField.innerHTML = '<span>Year(s) (optional)</span>';
-  const years = document.createElement('input');
-  years.className = 'leadership-years';
-  years.type = 'text';
-  years.placeholder = 'e.g., 2021 or 2021–2022';
-  years.value = initial.years || '';
-  yearsField.appendChild(years);
-
-  const remove = document.createElement('button');
-  remove.type = 'button';
-  remove.className = 'remove-row-button';
-  remove.setAttribute('aria-label', 'Remove this leadership position');
-  remove.textContent = '×';
-  remove.addEventListener('click', () => row.remove());
-
-  function refresh() {
-    const informal = type.value === 'informal';
-    formal.hidden = informal;
-    freeText.hidden = !informal && formal.value !== 'Other';
-    roleLabel.textContent = informal ? 'Informal position' : 'Formal position';
-    freeText.placeholder = informal ? 'e.g., Hype Man, mentor, unofficial coordinator' : 'Other formal position';
-  }
-  type.addEventListener('change', refresh);
-  formal.addEventListener('change', refresh);
-  refresh();
-
-  row.append(typeField, roleField, yearsField, remove);
-  container.appendChild(row);
-}
-
-function readLeadershipHistory() {
-  return qa('.leadership-entry-row', q('#leadership-entries')).map((row) => {
-    const type = q('.leadership-type', row).value;
-    const formal = q('.leadership-formal-role', row).value;
-    const free = q('.leadership-free-role', row).value.trim();
-    const role = type === 'informal' ? free : (formal === 'Other' ? free : formal);
-    return { type, role, years: q('.leadership-years', row).value.trim() };
-  }).filter((entry) => entry.role);
-}
-
-function selectedLeadershipRoles() {
-  return [...new Set(readLeadershipHistory().filter((entry) => entry.type === 'formal').map((entry) => entry.role))];
-}
-
-function informalLeadershipEntries() {
-  return readLeadershipHistory().filter((entry) => entry.type === 'informal');
-}
-
-function updateBandClubLeadershipVisibility() {
-  const yes = radioValue('band-club-leadership') === 'yes';
-  q('#band-club-leadership-details').hidden = !yes;
-  if (yes && !q('#band-club-leadership-entries').children.length) addBandClubLeadershipEntry();
-  if (!yes) q('#band-club-leadership-entries').replaceChildren();
-}
-
-function addBandClubLeadershipEntry(initial = {}) {
-  const container = q('#band-club-leadership-entries');
-  const row = document.createElement('div');
-  row.className = 'band-club-entry-row';
-
-  const positionField = document.createElement('label');
-  positionField.className = 'form-field';
-  positionField.innerHTML = '<span>Band Club position</span>';
-  const position = document.createElement('input');
-  position.className = 'band-club-position';
-  position.type = 'text';
-  position.placeholder = 'e.g., President, Treasurer, Social Chair';
-  position.value = initial.position || '';
-  positionField.appendChild(position);
-
-  const yearsField = document.createElement('label');
-  yearsField.className = 'form-field';
-  yearsField.innerHTML = '<span>Year(s) (optional)</span>';
-  const years = document.createElement('input');
-  years.className = 'band-club-years';
-  years.type = 'text';
-  years.placeholder = 'e.g., 2022–2023';
-  years.value = initial.years || '';
-  yearsField.appendChild(years);
-
-  const remove = document.createElement('button');
-  remove.type = 'button';
-  remove.className = 'remove-row-button';
-  remove.setAttribute('aria-label', 'Remove this Band Club position');
-  remove.textContent = '×';
-  remove.addEventListener('click', () => row.remove());
-  row.append(positionField, yearsField, remove);
-  container.appendChild(row);
-}
-
-function readBandClubLeadershipHistory() {
-  if (radioValue('band-club-leadership') !== 'yes') return [];
-  return qa('.band-club-entry-row', q('#band-club-leadership-entries')).map((row) => ({
-    position: q('.band-club-position', row).value.trim(),
-    years: q('.band-club-years', row).value.trim(),
-  })).filter((entry) => entry.position);
-}
-
 function updateOtherGtEnsembleVisibility() {
   const hasOtherEnsembles = radioValue('other-gt-ensembles') === 'yes';
   q('#other-gt-ensemble-details').hidden = !hasOtherEnsembles;
@@ -625,7 +477,8 @@ function bestVetCandidate() {
     q('#vet-name').value.trim(),
     q('#vet-section').value,
     q('#vet-year').value,
-    state.vetRejectedId ? new Set([state.vetRejectedId]) : new Set(),
+    state.vetRejectedIds,
+    { requireClearWinner: false },
   );
 }
 
@@ -637,10 +490,15 @@ function clearVetMatch() {
 }
 
 function updateVetMatch() {
+  const fingerprint = `${normalize(q('#vet-name').value)}|${q('#vet-section').value}|${q('#vet-year').value}`;
+  if (fingerprint !== state.vetFingerprint) {
+    state.vetRejectedIds.clear();
+    state.vetFingerprint = fingerprint;
+  }
   clearVetMatch();
   if (q('#relationship-questions').hidden) return;
   const candidate = bestVetCandidate();
-  if (!candidate || candidate.id === state.vetRejectedId) return;
+  if (!candidate) return;
 
   const panel = q('#vet-match-panel');
   const prompt = document.createElement('p');
@@ -653,10 +511,11 @@ function updateVetMatch() {
   yes.textContent = 'Yes';
   yes.addEventListener('click', () => {
     state.vetMatch = candidate;
-    state.vetRejectedId = null;
+    state.vetRejectedIds.clear();
     q('#vet-name').value = candidate.name;
     q('#vet-section').value = (candidate.instruments || [])[0] || q('#vet-section').value;
     if (candidate.ratYear) q('#vet-year').value = String(candidate.ratYear);
+    state.vetFingerprint = `${normalize(q('#vet-name').value)}|${q('#vet-section').value}|${q('#vet-year').value}`;
     panel.classList.add('match-confirmed');
     panel.replaceChildren();
     const confirmed = document.createElement('p');
@@ -666,7 +525,7 @@ function updateVetMatch() {
     undo.className = 'secondary-button small-button';
     undo.textContent = 'Not them';
     undo.addEventListener('click', () => {
-      state.vetRejectedId = candidate.id;
+      state.vetRejectedIds.add(candidate.id);
       clearVetMatch();
       updateVetMatch();
     });
@@ -678,41 +537,150 @@ function updateVetMatch() {
   no.className = 'secondary-button small-button';
   no.textContent = 'No';
   no.addEventListener('click', () => {
-    state.vetRejectedId = candidate.id;
+    state.vetRejectedIds.add(candidate.id);
     clearVetMatch();
+    updateVetMatch();
   });
   actions.append(yes, no);
   panel.append(prompt, actions);
   panel.hidden = false;
 }
 
-function exactExistingPerson(name, year, section = '') {
+// Same names and RAT years are legal and intentionally remain separate people.
+// NEVER infer a merge from name/year/section; a member must say Yes to the
+// exact person.  'No' is recorded for EACH candidate before allowing creation.
+function matchingSelfProfiles(name = fullSubmittedName(), year = q('#self-rat-year').value) {
   const normalizedName = normalize(name);
-  if (!normalizedName) return null;
-  const candidates = state.data.people.filter((person) => normalize(person.name) === normalizedName);
-  const byYear = year ? candidates.filter((person) => Number(person.ratYear) === Number(year)) : candidates;
-  const bySection = section ? byYear.filter((person) => personSectionMatches(person, section)) : byYear;
-  if (bySection.length === 1) return bySection[0];
-  if (byYear.length === 1) return byYear[0];
-  if (!year && candidates.length === 1) return candidates[0];
-  return null;
+  if (!normalizedName || !year || !state.data?.people) return [];
+  const section = primarySection();
+  return state.data.people.filter((person) =>
+    normalize(person.name) === normalizedName && Number(person.ratYear) === Number(year)
+  ).sort((a, b) => Number(personSectionMatches(b, section)) - Number(personSectionMatches(a, section))
+    || String(a.id).localeCompare(String(b.id)));
+}
+
+function resetSelfIdentityOnChange() {
+  const key = `${normalize(fullSubmittedName())}|${q('#self-rat-year').value}`;
+  if (key === state.selfIdentityKey) return;
+  state.selfIdentityKey = key;
+  state.selfIdentityDecision = '';
+  state.selfMatchedPersonId = null;
+  state.selfDifferentPersonIds = new Set();
+}
+
+function exactExistingPerson() {
+  // This function exists for the preview graph, NOT for fuzzy matching.
+  return state.selfIdentityDecision === 'merge'
+    ? matchingSelfProfiles().find((person) => person.id === state.selfMatchedPersonId) || null
+    : null;
 }
 
 function updateExistingSelfWarning() {
   const panel = q('#existing-self-warning');
-  const name = fullSubmittedName();
-  const year = q('#self-rat-year').value;
-  if (!name || !year) {
+  resetSelfIdentityOnChange();
+  const candidates = matchingSelfProfiles();
+  panel.replaceChildren();
+  if (!candidates.length) {
+    state.selfIdentityDecision = 'create';
+    state.selfMatchedPersonId = null;
     panel.hidden = true;
     return;
   }
-  const match = exactExistingPerson(name, year, primarySection());
-  if (!match) {
-    panel.hidden = true;
-    return;
-  }
-  panel.innerHTML = `A record for <strong>${escapeHtml(match.name)}</strong> (${escapeHtml(match.ratYearLabel)}) already exists. If this is you, your Add Yourself submission will merge into that existing profile instead of creating a duplicate row.`;
   panel.hidden = false;
+  const intro = document.createElement('p');
+  intro.textContent = `${candidates.length} existing profile${candidates.length > 1 ? 's' : ''} share your name and RAT year. Is this you? Review the details before choosing.`;
+  panel.appendChild(intro);
+  if (state.selfIdentityDecision === 'merge') {
+    const confirmed = candidates.find((p) => p.id === state.selfMatchedPersonId);
+    if (confirmed) {
+      const message = document.createElement('p');
+      message.textContent = `Yes — merge into ${confirmed.name} (${confirmed.ratYearLabel}, ${confirmed.instrumentRaw || 'Unknown section'}).`;
+      const restart = document.createElement('button');
+      restart.type = 'button'; restart.className = 'secondary-button small-button';
+      restart.textContent = 'Change my answer';
+      restart.addEventListener('click', () => {
+        state.selfIdentityDecision = ''; state.selfMatchedPersonId = null;
+        state.selfDifferentPersonIds.clear(); updateExistingSelfWarning();
+      });
+      panel.append(message, restart);
+      return;
+    }
+    state.selfIdentityDecision = '';
+    state.selfMatchedPersonId = null;
+  }
+  if (state.selfIdentityDecision === 'create') {
+    const message = document.createElement('p');
+    message.textContent = 'You confirmed that none of these profiles is you. Your submission will create a separate person with the same name and RAT year.';
+    const restart = document.createElement('button');
+    restart.type = 'button'; restart.className = 'secondary-button small-button';
+    restart.textContent = 'Review matching profiles again';
+    restart.addEventListener('click', () => {
+      state.selfIdentityDecision = ''; state.selfDifferentPersonIds.clear(); updateExistingSelfWarning();
+    });
+    panel.append(message, restart);
+    return;
+  }
+  const pending = candidates.filter((person) => !state.selfDifferentPersonIds.has(person.id));
+  if (!pending.length) {
+    state.selfIdentityDecision = 'create';
+    updateExistingSelfWarning();
+    return;
+  }
+  const list = document.createElement('div');
+  list.className = 'identity-choice-list';
+  // Display one candidate at a time, including all workbook-backed profile fields.
+  const person = pending[0];
+  const card = document.createElement('div');
+  card.className = 'identity-candidate';
+  const title = document.createElement('strong');
+  title.textContent = `${person.name} — ${person.ratYearLabel}`;
+  card.appendChild(title);
+  const details = document.createElement('dl');
+  const fields = Array.isArray(person.sourceFields) && person.sourceFields.length
+    ? person.sourceFields
+    : [
+      {label: 'RAT Year', value: person.ratYearLabel},
+      {label: 'Instrument / Section', value: person.instrumentRaw},
+      {label: 'Personal Nickname', value: person.personalNickname},
+      {label: 'Family/Maiden Name', value: person.familyMaidenName},
+      {label: 'Married Name', value: person.marriedName},
+    ];
+  for (const field of fields) {
+    if (field.value == null || !String(field.value).trim()) continue;
+    const dt = document.createElement('dt'); dt.textContent = field.label;
+    const dd = document.createElement('dd'); dd.textContent = String(field.value);
+    details.append(dt, dd);
+  }
+  card.appendChild(details);
+  const actions = document.createElement('div');
+  actions.className = 'inline-actions';
+  const yes = document.createElement('button');
+  yes.type = 'button'; yes.className = 'primary-button small-button'; yes.textContent = 'Yes';
+  yes.addEventListener('click', () => {
+    state.selfIdentityDecision = 'merge';
+    state.selfMatchedPersonId = person.id;
+    updateExistingSelfWarning();
+  });
+  const no = document.createElement('button');
+  no.type = 'button'; no.className = 'secondary-button small-button';
+  no.textContent = "No, I'm a different person";
+  no.addEventListener('click', () => {
+    state.selfDifferentPersonIds.add(person.id);
+    if (candidates.every((candidate) => state.selfDifferentPersonIds.has(candidate.id))) {
+      state.selfIdentityDecision = 'create';
+      state.selfMatchedPersonId = null;
+    }
+    updateExistingSelfWarning();
+  });
+  actions.append(yes, no);
+  card.appendChild(actions);
+  list.appendChild(card);
+  if (pending.length > 1) {
+    const remaining = document.createElement('p');
+    remaining.textContent = `${pending.length - 1} more matching profile(s) will be checked if you choose No.`;
+    list.appendChild(remaining);
+  }
+  panel.appendChild(list);
 }
 
 function createRelationshipSelect(kind, className) {
@@ -864,6 +832,7 @@ function readRats() {
     section: q('.rat-section', row).value,
     year: q('.rat-year', row).value ? Number(q('.rat-year', row).value) : null,
     matchedId: row.dataset.matchedId || null,
+    rejectedIds: [...row._ratRejectedIds],
   })).filter((rat) => rat.name || rat.section || rat.year);
 }
 
@@ -919,6 +888,7 @@ function readVet() {
     section: q('#vet-section').value,
     year: q('#vet-year').value ? Number(q('#vet-year').value) : null,
     matchedId: state.vetMatch?.id || null,
+    rejectedIds: [...state.vetRejectedIds],
   };
 }
 
@@ -934,6 +904,11 @@ function validateStep2() {
   }
   if (!radioValue('multiple-sections')) {
     showStatus('Please answer whether you have been in multiple sections.');
+    return false;
+  }
+  updateExistingSelfWarning();
+  if (matchingSelfProfiles().length && !state.selfIdentityDecision) {
+    showStatus('Please answer “Is this you?” for each matching profile before continuing.');
     return false;
   }
   const memberships = readSectionMemberships();
@@ -990,20 +965,6 @@ function validateStep2() {
       return false;
     }
   }
-  for (const [index, entry] of readLeadershipHistory().entries()) {
-    if (!entry.role) {
-      showStatus(`Leadership row ${index + 1} needs a position, or remove that row.`);
-      return false;
-    }
-  }
-  if (!radioValue('band-club-leadership')) {
-    showStatus('Please answer whether you have held a Band Club leadership position.');
-    return false;
-  }
-  if (radioValue('band-club-leadership') === 'yes' && !readBandClubLeadershipHistory().length) {
-    showStatus('Add at least one Band Club leadership position, or choose No.');
-    return false;
-  }
   if (year < 1990 && !radioValue('legacy-system')) {
     showStatus('Please answer whether the RAT/VET pair system applied while you were in band.');
     return false;
@@ -1048,9 +1009,11 @@ function proposedSubmission() {
     if (checkbox.checked && textarea.value.trim()) notes[target.dataset.targetKey] = textarea.value.trim();
   }
   return {
-    version: 5,
+    version: 6,
     submittedAt: new Date().toISOString(),
-    existingPersonId: exactExistingPerson(fullSubmittedName(), q('#self-rat-year').value, primarySection())?.id || null,
+    identityDecision: state.selfIdentityDecision || (matchingSelfProfiles().length ? 'unresolved' : 'create'),
+    differentPersonIds: [...state.selfDifferentPersonIds],
+    existingPersonId: exactExistingPerson()?.id || null,
     self: {
       givenPreferredName: q('#self-given').value.trim(),
       hasNickname: radioValue('has-nickname') === 'yes',
@@ -1069,12 +1032,7 @@ function proposedSubmission() {
       otherGtEnsemblesList: radioValue('other-gt-ensembles') === 'yes' ? q('#other-gt-ensembles-list').value.trim() : '',
       playedDifferentGtInstrument: radioValue('other-gt-ensembles') === 'yes' && radioValue('different-gt-instrument') === 'yes',
       otherGtInstruments: radioValue('other-gt-ensembles') === 'yes' && radioValue('different-gt-instrument') === 'yes' ? q('#other-gt-instruments').value.trim() : '',
-      marchingBandLeadershipRoles: selectedLeadershipRoles(),
-      leadershipHistory: readLeadershipHistory(),
-      informalLeadership: informalLeadershipEntries().length > 0,
-      informalLeadershipDescription: informalLeadershipEntries().map((entry) => `${entry.role}${entry.years ? ` (${entry.years})` : ''}`).join('; '),
-      bandClubLeadership: radioValue('band-club-leadership') === 'yes',
-      bandClubLeadershipHistory: readBandClubLeadershipHistory(),
+      positionYear: q('#position-year').value.trim(),
     },
     pairSystem: {
       applies: usePairSystem,
@@ -1134,6 +1092,12 @@ function renderNoteTargets() {
   q('#note-targets').hidden = radioValue('add-notes') !== 'yes';
 }
 
+function positionAndYearFromPerson(person) {
+  if (String(person?.positionAndYear || '').trim()) return String(person.positionAndYear).trim();
+  const field = (person?.sourceFields || []).find((item) => String(item?.label || '').toLowerCase().replace(/[^a-z0-9]+/g, '') === 'positionandyear');
+  return String(field?.value || '').trim();
+}
+
 function canonicalNodeFromPerson(person) {
   return {
     id: person.id,
@@ -1145,7 +1109,7 @@ function canonicalNodeFromPerson(person) {
     existing: true,
     sourcePerson: person,
     currentlyRat: Boolean(person.currentlyRat),
-    bandClubLeadership: Boolean(person.bandClubLeadership),
+    positionAndYear: positionAndYearFromPerson(person),
   };
 }
 
@@ -1182,7 +1146,7 @@ function proposedGraph() {
   selfNode.sections = submission.self.sections.map((entry) => entry.section);
   selfNode.role = 'self';
   selfNode.currentlyRat = Boolean(submission.self.currentlyRat) || Boolean(selfNode.currentlyRat);
-  selfNode.bandClubLeadership = Boolean(submission.self.bandClubLeadership) || Boolean(selfNode.bandClubLeadership);
+  selfNode.positionAndYear = submission.self.positionYear || selfNode.positionAndYear || '';
   nodes.set(selfId, selfNode);
 
   if (submission.pairSystem.applies && submission.vet) {
@@ -1363,7 +1327,7 @@ function appendPreviewConnectorPath(svg, commands, width = 6) {
 
 function submissionMergeDescription() {
   const duplicate = exactExistingPerson(fullSubmittedName(), q('#self-rat-year').value, primarySection());
-  if (duplicate) return 'Your existing profile is shown in its current family tree. New people/relationships you entered use dashed outlines and will be merged into that profile.';
+  if (duplicate) return 'You confirmed that this is your existing profile. New people/relationships use dashed outlines and will be merged into it.';
   return 'Existing cards come from the current tree. Cards with a dashed outline are the new people/relationships you entered.';
 }
 
@@ -1451,13 +1415,18 @@ function renderPreview() {
     description.textContent = 'This preview contains the people and relationships you entered. Cards with a dashed outline are new entries.';
   }
 
-  const duplicate = exactExistingPerson(fullSubmittedName(), q('#self-rat-year').value, primarySection());
+  const duplicate = exactExistingPerson();
   const warning = q('#preview-warning');
   if (duplicate) {
     warning.innerHTML = `A record for <strong>${escapeHtml(duplicate.name)}</strong> (${escapeHtml(duplicate.ratYearLabel)}) already exists. This preview represents information that will be merged into the existing profile rather than creating a duplicate card.`;
     warning.hidden = false;
   } else {
-    warning.hidden = true;
+    if (state.selfIdentityDecision === 'create' && matchingSelfProfiles().length) {
+      warning.textContent = 'You confirmed this is a different person. A separate card will be created, even though the name and RAT year match.';
+      warning.hidden = false;
+    } else {
+      warning.hidden = true;
+    }
   }
 
   requestAnimationFrame(() => {
@@ -1500,8 +1469,7 @@ function renderSubmissionSummary() {
     }).join('; ')),
     summaryRow('Other GT ensembles', data.self.otherGtEnsembles ? data.self.otherGtEnsemblesList : 'No'),
     summaryRow('Different instrument in other GT ensembles', data.self.otherGtEnsembles ? (data.self.playedDifferentGtInstrument ? `Yes — ${data.self.otherGtInstruments}` : 'No') : 'Not applicable'),
-    summaryRow('Marching band leadership', data.self.leadershipHistory.length ? data.self.leadershipHistory.map((entry) => `${entry.type === 'formal' ? 'Formal' : 'Informal'}: ${entry.role}${entry.years ? ` (${entry.years})` : ''}`).join('; ') : 'None reported'),
-    summaryRow('Band Club leadership', data.self.bandClubLeadership ? data.self.bandClubLeadershipHistory.map((entry) => `${entry.position}${entry.years ? ` (${entry.years})` : ''}`).join('; ') : 'No'),
+    summaryRow('Position and Year', data.self.positionYear || 'None reported'),
     summaryRow('Currently a RAT', data.self.currentlyRat ? 'Yes' : 'No'),
     summaryRow('RAT/VET system', data.pairSystem.applies ? 'Yes' : 'No / not applicable'),
     summaryRow('VET', vet),
@@ -1510,7 +1478,7 @@ function renderSubmissionSummary() {
     summaryRow('Favorite Tech Band Memory', data.favoriteTechBandMemory || 'No memory entered'),
   ].join('');
 
-  q('#submission-github-note').innerHTML = 'Your authenticated submission is placed in the protected update queue after required-field and abuse checks. <strong>If your profile already exists, the submitted information is merged into that profile instead of creating a duplicate.</strong> New VETs/RATs that do not exist yet can be created automatically. Every applied change is recorded in the protected admin changelog. Changes may take a few minutes to appear on the live tree.';
+  q('#submission-github-note').innerHTML = 'Your authenticated submission is placed in the protected update queue after required-field and abuse checks. <strong>Existing profiles are merged only after you explicitly identify the correct person. If you are someone else, a separate profile can be created.</strong> New VETs/RATs that do not exist yet can be created automatically. Every applied change is recorded in the protected admin changelog. Changes may take a few minutes to appear on the live tree.';
 }
 
 function renderTurnstile() {
@@ -1550,8 +1518,7 @@ function buildIssueBody(payload) {
     }).join('; ')}`,
     `**Other GT ensembles:** ${payload.self.otherGtEnsembles ? payload.self.otherGtEnsemblesList : 'No'}`,
     `**Different instrument in other GT ensembles:** ${payload.self.otherGtEnsembles ? (payload.self.playedDifferentGtInstrument ? `Yes — ${payload.self.otherGtInstruments}` : 'No') : 'Not applicable'}`,
-    `**Marching band leadership roles:** ${payload.self.marchingBandLeadershipRoles.length ? payload.self.marchingBandLeadershipRoles.join(', ') : 'None reported'}`,
-    `**Informal leadership:** ${payload.self.informalLeadership ? `Yes — ${payload.self.informalLeadershipDescription}` : 'No'}`,
+    `**Position and Year:** ${payload.self.positionYear || 'None reported'}`,
     `**Currently a RAT:** ${payload.self.currentlyRat ? 'Yes' : 'No'}`,
     `**RAT/VET system applies:** ${payload.pairSystem.applies ? 'Yes' : 'No'}`,
     '',
@@ -1583,9 +1550,12 @@ function buildIssueBody(payload) {
 async function submitRequest() {
   clearStatus();
   if (!validateStep1() || !validateStep2() || !validateStep4()) return;
-  const duplicate = exactExistingPerson(fullSubmittedName(), q('#self-rat-year').value, primarySection());
+  updateExistingSelfWarning();
+  if (matchingSelfProfiles().length && !state.selfIdentityDecision) {
+    showStatus('Confirm whether an existing profile is yours before submitting.');
+    return;
+  }
   const payload = proposedSubmission();
-  if (duplicate) payload.existingPersonId = duplicate.id;
   const button = q('#submit-tree-request');
   button.disabled = true;
   showStatus('Checking the authenticated submission and abuse safeguards…', 'info');
@@ -1594,8 +1564,11 @@ async function submitRequest() {
       method: 'POST',
       body: JSON.stringify({ payload, turnstileToken: state.turnstileToken || '' }),
     });
-    if (result.status === 'auto') {
-      showStatus('Submission accepted. The protected updater will merge it into an existing matching profile when appropriate, create missing VET/RAT rows when safe, and rebuild the live tree. Changes may take a few minutes to appear.', 'info');
+    if (result.status === 'local-preview') {
+      showStatus('Local dry run successful. Nothing was submitted, saved, or published.', 'info');
+      button.textContent = 'Local test complete';
+    } else if (result.status === 'auto') {
+      showStatus('Submission accepted. Your confirmed identity choice will be honored; missing related people are added only when safe. Changes may take a few minutes to appear.', 'info');
       button.textContent = 'Accepted';
     } else {
       showStatus('The protected updater found a structural conflict and held this submission for administrator review. Changes that are approved may take a few minutes to appear.', 'info');
@@ -1634,16 +1607,13 @@ function bindEvents() {
   qa('input[name="legacy-system"]').forEach((input) => input.addEventListener('change', updateRelationshipVisibility));
   q('#self-rat-year').addEventListener('change', updateRelationshipVisibility);
   q('#add-section').addEventListener('click', () => addSectionMembership());
-  q('#add-leadership').addEventListener('click', () => addLeadershipEntry());
-  qa('input[name="band-club-leadership"]').forEach((input) => input.addEventListener('change', updateBandClubLeadershipVisibility));
-  q('#add-band-club-leadership').addEventListener('click', () => addBandClubLeadershipEntry());
   q('#self-given').addEventListener('input', updateExistingSelfWarning);
   q('#self-family').addEventListener('input', updateExistingSelfWarning);
 
   ['#vet-name', '#vet-section', '#vet-year'].forEach((selector) => {
     q(selector).addEventListener(selector === '#vet-name' ? 'input' : 'change', () => {
       if (state.vetMatch) {
-        state.vetRejectedId = null;
+        state.vetRejectedIds.clear();
         state.vetMatch = null;
       }
       updateVetMatch();
@@ -1677,7 +1647,6 @@ async function main() {
     changedLastNameUpdated();
     updateNicknameVisibility();
     updateOtherGtEnsembleVisibility();
-    updateBandClubLeadershipVisibility();
     refreshSectionMemberships();
     updateRelationshipVisibility();
     setStep(1, { scroll: false });

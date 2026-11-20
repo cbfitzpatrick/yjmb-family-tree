@@ -1,0 +1,25 @@
+YJMB Family Tree v19.0 patch
+
+Purpose:
+- Smaller PNG card-role icons positioned closer to the four corners.
+- Drum Major is reserved for top-left.
+- Section Leader / Guard Captain is reserved for top-right.
+- Cards display at most four role icons.
+- Other icons fill bottom-left and bottom-right first, then any unreserved top corner.
+- Extra roles remain in member details instead of overlapping the card.
+- All role icons remain PNG files under docs/icons and web_template/icons.
+- Release notice advanced to v19.0.
+
+Files included:
+- docs/app.js
+- docs/admin.js
+- docs/styles.css
+- docs/release-notice.js
+- docs/icons/*.png
+- web_template/app.js
+- web_template/admin.js
+- web_template/styles.css
+- web_template/release-notice.js
+- web_template/icons/*.png
+
+No workbook, tree payload, secret, Worker configuration, or Markdown files are included.

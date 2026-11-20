@@ -43,7 +43,7 @@ from typing import Iterable, Iterator, Sequence
 from openpyxl import load_workbook
 from PIL import Image, ImageDraw, ImageFont
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from yjmb_taxonomy import leadership_icon_flags, truthy
+from yjmb_taxonomy import leadership_icon_flags, position_year_icon_flags, truthy
 
 # Large full-band charts can exceed Pillow's default decompression warning size.
 Image.MAX_IMAGE_PIXELS = None
@@ -894,7 +894,15 @@ class Person:
         return truthy(self.source_field_value("Currently a RAT", "Current RAT"))
 
     @property
+    def position_and_year(self) -> str:
+        return self.source_field_value("Position and Year")
+
+    @property
     def band_club_leadership(self) -> bool:
+        position = self.position_and_year
+        if position:
+            return "band-club" in position_year_icon_flags(position)
+        # Compatibility only for old rows whose Position and Year is blank.
         return bool(
             truthy(self.source_field_value("Served in Band Club Leadership Position", "Band Club Leadership"))
             or self.source_field_value("Band Club Leadership Position(s)", "Band Club Leadership History")
@@ -910,11 +918,11 @@ class Person:
 
     @property
     def marching_band_leadership_history(self) -> str:
-        return self.source_field_value("Marching Band Leadership History")
+        return self.position_and_year
 
     @property
     def band_club_leadership_history(self) -> str:
-        return self.source_field_value("Band Club Leadership History")
+        return self.position_and_year if self.band_club_leadership else ""
 
     def source_field_value(self, *labels: str) -> str:
         wanted = {normalized_header(label) for label in labels}
@@ -925,6 +933,13 @@ class Person:
 
     @property
     def leadership_icons(self) -> list[str]:
+        # v19.1: Position and Year is authoritative for card icons.
+        position = self.position_and_year
+        if position:
+            return [flag for flag in position_year_icon_flags(position) if flag != "band-club"]
+
+        # Compatibility only for historical rows that have not yet had their
+        # old leadership metadata consolidated into Position and Year.
         formal = self.source_field_value(
             "Marching Band Leadership Role(s)",
             "Formal Leadership Position(s)",
@@ -2081,7 +2096,7 @@ def _draw_band_club_icon(draw: ImageDraw.ImageDraw, card: Image.Image) -> None:
     draw.ellipse((x0 + 5, y0 + 10, x0 + 10, y0 + 14), fill="black")
 
 
-CARD_ICONS_ENABLED = False
+CARD_ICONS_ENABLED = True
 
 
 def draw_card_status_icons(card: Image.Image, person: Person) -> None:
@@ -2725,6 +2740,7 @@ def scene_to_web_data(
                 "personalNickname": person.nickname,
                 "sectionNicknames": person.section_nicknames,
                 "favoriteTechBandMemory": person.favorite_tech_band_memory,
+                "positionAndYear": person.position_and_year,
                 "marchingBandLeadershipHistory": person.marching_band_leadership_history,
                 "bandClubLeadershipHistory": person.band_club_leadership_history,
                 "currentlyRat": person.currently_rat,
@@ -2735,7 +2751,7 @@ def scene_to_web_data(
                 "instruments": person.instruments,
                 "uncategorizedInstrumentText": uncategorized_instrument_text(person.instrument_raw),
                 "leadershipIcons": person.leadership_icons,
-                "leadershipIconsEnabled": False,
+                "leadershipIconsEnabled": True,
                 "parentId": person.parent_id,
                 "childrenIds": person.children_ids,
                 "sourceFields": person.source_fields,

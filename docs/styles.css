@@ -1429,3 +1429,365 @@ button:disabled { cursor: wait; opacity: .65; }
 .connector-outline-path { opacity: 1; }
 .admin-tree-connectors { z-index: 1; }
 .admin-tree-cards { z-index: 2; }
+
+/* Local patch v18.6.1: full-width year strips stay behind the tree, while a
+   dedicated frozen left rail uses the exact same y/height geometry so labels
+   remain attached to their rows and mask tree content at the seam. */
+.tree-page #scaled-stage { position: relative; isolation: isolate; }
+.tree-page #bands { position: absolute; inset: 0 auto auto 0; z-index: 0; pointer-events: none; }
+.tree-page #year-rail {
+  position: sticky;
+  /* Horizontal freeze only: top:0 would also freeze the rail vertically. */
+  top: auto;
+  bottom: auto;
+  left: 0;
+  height: 0;
+  overflow: visible;
+  z-index: 4;
+  pointer-events: none;
+}
+/* Keep the stage anchored to the same Y origin as the year bands, regardless
+   of sibling elements, browser static-position rules or zoom. */
+.tree-page #stage {
+  top: 0;
+  z-index: 1;
+  background: transparent;
+  overflow: visible;
+}
+/* The opaque row cells cover cards and connectors crossing the seam. */
+.tree-page .year-rail-band { pointer-events: auto; }
+.tree-page .year-band,
+.tree-page .year-rail-band { position: absolute; left: 0; right: 0; display: block; }
+.tree-page .sticky-year-label {
+  display: grid; place-items: center; width: 100%; height: 100%;
+  border-right: 2px solid rgba(0,0,0,.20);
+  padding: 0 5px; background: inherit;
+  font-weight: 800; font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  box-shadow: 1px 0 0 rgba(255,255,255,.25) inset;
+}
+/* Keep the search list above controls, not just within its own grid item. */
+.tree-page .search-wrap { z-index: 110; }
+.tree-page .search-results { z-index: 111; }
+.tree-page .toolbar-actions { position: relative; z-index: 40; }
+.tree-page .toolbar-bug-slot { z-index: auto; }
+.tree-page .toolbar-bug-slot .bug-report-section,
+.tree-page .toolbar-bug-slot .bug-report-section > details { width: 38px; height: 38px; }
+.tree-page .toolbar-bug-slot .bug-report-form { z-index: 45; }
+/* All icons share a square footprint; 2-unit SVG strokes standardized in JS.
+   Original flag/cap/Buzz artwork is retained in transparent PNG form. */
+:root { --yjmb-icon-box: 32px; --yjmb-icon-edge: 2px; }
+.card-role-icon {
+  width: var(--yjmb-icon-box); height: var(--yjmb-icon-box);
+  display: grid; place-items: center; overflow: hidden;
+}
+.card-role-icon img, .card-role-icon svg { width: 100%; height: 100%; object-fit: contain; }
+.card-role-icon.icon-section-leader { left: var(--yjmb-icon-edge); top: var(--yjmb-icon-edge); }
+.card-role-icon.icon-guard-captain { left: calc(var(--yjmb-icon-edge) + 32px); top: var(--yjmb-icon-edge); }
+.card-role-icon.icon-drum-major { right: var(--yjmb-icon-edge); top: var(--yjmb-icon-edge); }
+.card-role-icon.icon-rat-parent { left: var(--yjmb-icon-edge); bottom: var(--yjmb-icon-edge); }
+.card-role-icon.icon-band-club { right: var(--yjmb-icon-edge); bottom: var(--yjmb-icon-edge); }
+.card-role-icon.icon-mcm, .card-role-icon.icon-libraries,
+.card-role-icon.icon-uniforms, .card-role-icon.icon-informal-leadership,
+.card-role-icon.icon-other-leadership {
+  right: calc(var(--yjmb-icon-edge) + 32px); bottom: var(--yjmb-icon-edge);
+}
+.site-card.has-card-icons .site-card-name { padding-left: 32px; padding-right: 32px; }
+.admin-tree-card .card-role-icon { width: calc(32px * .58); height: calc(32px * .58); }
+.admin-tree-card .card-role-icon.icon-section-leader { left: calc(2px * .58); top: calc(2px * .58); }
+.admin-tree-card .card-role-icon.icon-guard-captain { left: calc(34px * .58); top: calc(2px * .58); }
+.admin-tree-card .card-role-icon.icon-drum-major { right: calc(2px * .58); top: calc(2px * .58); }
+.admin-tree-card .card-role-icon.icon-rat-parent { left: calc(2px * .58); bottom: calc(2px * .58); }
+.admin-tree-card .card-role-icon.icon-band-club { right: calc(2px * .58); bottom: calc(2px * .58); }
+.admin-tree-card .card-role-icon.icon-mcm, .admin-tree-card .card-role-icon.icon-libraries,
+.admin-tree-card .card-role-icon.icon-uniforms, .admin-tree-card .card-role-icon.icon-informal-leadership,
+.admin-tree-card .card-role-icon.icon-other-leadership { right: calc(34px * .58); bottom: calc(2px * .58); }
+/* An identity choice is required before merge; show every matching candidate. */
+.identity-choice-list { display: grid; gap: 10px; margin-top: 9px; }
+.identity-candidate { border: 1px solid #a1a1aa; background: #fff; border-radius: 8px; padding: 10px 12px; }
+.identity-candidate strong { display: block; font-size: 15px; }
+.identity-candidate dl { display: grid; grid-template-columns: max-content minmax(0,1fr); gap: 3px 12px; font-size: 12px; margin: 8px 0; }
+.identity-candidate dt { font-weight: 700; }
+.identity-candidate dd { margin: 0; overflow-wrap: anywhere; }
+.identity-candidate .inline-actions { margin-top: 9px; }
+@media (max-width: 820px) { .tree-page .toolbar-bug-slot .bug-report-section,
+  .tree-page .toolbar-bug-slot .bug-report-section > details { width: 42px; height: 42px; } }
+
+/* Dynamic, non-overlapping leadership positions.  The four true corners keep
+   their 32px footprint; secondary slots also use the same 32px square. */
+.card-role-icon[data-role-slot="tl"] { top: 2px; bottom:auto; left:2px; right:auto; }
+.card-role-icon[data-role-slot="tr"] { top: 2px; bottom:auto; right:2px; left:auto; }
+.card-role-icon[data-role-slot="bl"] { bottom: 2px; top:auto; left:2px; right:auto; }
+.card-role-icon[data-role-slot="br"] { bottom: 2px; top:auto; right:2px; left:auto; }
+.card-role-icon[data-role-slot="t2"] { top: 2px; bottom:auto; left:38px; right:auto; }
+.card-role-icon[data-role-slot="t3"] { top: 2px; bottom:auto; right:38px; left:auto; }
+.card-role-icon[data-role-slot="b2"] { bottom: 2px; top:auto; left:38px; right:auto; }
+.card-role-icon[data-role-slot="b3"] { bottom: 2px; top:auto; right:38px; left:auto; }
+.admin-tree-card .card-role-icon[data-role-slot="tl"] { top:1px; bottom:auto; left:1px; right:auto; }
+.admin-tree-card .card-role-icon[data-role-slot="tr"] { top:1px; bottom:auto; right:1px; left:auto; }
+.admin-tree-card .card-role-icon[data-role-slot="bl"] { bottom:1px; top:auto; left:1px; right:auto; }
+.admin-tree-card .card-role-icon[data-role-slot="br"] { bottom:1px; top:auto; right:1px; left:auto; }
+.admin-tree-card .card-role-icon[data-role-slot="t2"] { top:1px; bottom:auto; left:calc(38px * .58); right:auto; }
+.admin-tree-card .card-role-icon[data-role-slot="t3"] { top:1px; bottom:auto; right:calc(38px * .58); left:auto; }
+.admin-tree-card .card-role-icon[data-role-slot="b2"] { bottom:1px; top:auto; left:calc(38px * .58); right:auto; }
+.admin-tree-card .card-role-icon[data-role-slot="b3"] { bottom:1px; top:auto; right:calc(38px * .58); left:auto; }
+.admin-feature-sample-card.has-card-icons .admin-feature-sample-name { width: calc(100% - 76px); }
+
+
+/* Patch follow-up: restore pre-v18.6 centered name placement while keeping
+   corner icons in the foreground. */
+.site-card-name {
+  position: relative;
+  top: auto;
+  left: auto;
+  width: 100%;
+  max-width: 100%;
+  min-height: 48px;
+  padding: 0 10px;
+  margin: 0;
+  box-sizing: border-box;
+  transform: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  overflow: visible;
+  text-align: center;
+  font-family: Arial, Helvetica, sans-serif;
+  font-weight: 400;
+  line-height: .92;
+}
+.site-card-name-line { display: block; max-width: 100%; white-space: nowrap; margin-inline: auto; text-align: center; }
+.site-card.has-card-icons .site-card-name { width: 100%; padding-left: 23px; padding-right: 23px; }
+
+:root { --yjmb-icon-box: 32px; --yjmb-icon-edge: 4px; --yjmb-icon-gap: 4px; }
+.card-role-icon {
+  width: var(--yjmb-icon-box);
+  height: var(--yjmb-icon-box);
+  display: grid;
+  place-items: center;
+  overflow: visible;
+  z-index: 4;
+}
+.card-role-icon img,
+.card-role-icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.card-role-icon img { box-sizing: border-box; padding: 1px; }
+.card-role-icon.icon-band-club img,
+.card-role-icon[data-icon-kind="band-club"] img { padding: 2px; }
+.card-role-icon[data-role-slot="tl"] { top: var(--yjmb-icon-edge); bottom:auto; left:var(--yjmb-icon-edge); right:auto; }
+.card-role-icon[data-role-slot="tr"] { top: var(--yjmb-icon-edge); bottom:auto; right:var(--yjmb-icon-edge); left:auto; }
+.card-role-icon[data-role-slot="bl"] { bottom: var(--yjmb-icon-edge); top:auto; left:var(--yjmb-icon-edge); right:auto; }
+.card-role-icon[data-role-slot="br"] { bottom: var(--yjmb-icon-edge); top:auto; right:var(--yjmb-icon-edge); left:auto; }
+.card-role-icon[data-role-slot="t2"] { top: var(--yjmb-icon-edge); bottom:auto; left: calc(var(--yjmb-icon-edge) + var(--yjmb-icon-box) + var(--yjmb-icon-gap)); right:auto; }
+.card-role-icon[data-role-slot="t3"] { top: var(--yjmb-icon-edge); bottom:auto; right: calc(var(--yjmb-icon-edge) + var(--yjmb-icon-box) + var(--yjmb-icon-gap)); left:auto; }
+.card-role-icon[data-role-slot="b2"] { bottom: var(--yjmb-icon-edge); top:auto; left: calc(var(--yjmb-icon-edge) + var(--yjmb-icon-box) + var(--yjmb-icon-gap)); right:auto; }
+.card-role-icon[data-role-slot="b3"] { bottom: var(--yjmb-icon-edge); top:auto; right: calc(var(--yjmb-icon-edge) + var(--yjmb-icon-box) + var(--yjmb-icon-gap)); left:auto; }
+.admin-tree-card .card-role-icon { width: calc(32px * .58); height: calc(32px * .58); z-index: 4; }
+.admin-tree-card .card-role-icon[data-role-slot="tl"] { top:2px; bottom:auto; left:2px; right:auto; }
+.admin-tree-card .card-role-icon[data-role-slot="tr"] { top:2px; bottom:auto; right:2px; left:auto; }
+.admin-tree-card .card-role-icon[data-role-slot="bl"] { bottom:2px; top:auto; left:2px; right:auto; }
+.admin-tree-card .card-role-icon[data-role-slot="br"] { bottom:2px; top:auto; right:2px; left:auto; }
+.admin-tree-card .card-role-icon[data-role-slot="t2"] { top:2px; bottom:auto; left:calc(2px + (32px * .58) + 2px); right:auto; }
+.admin-tree-card .card-role-icon[data-role-slot="t3"] { top:2px; bottom:auto; right:calc(2px + (32px * .58) + 2px); left:auto; }
+.admin-tree-card .card-role-icon[data-role-slot="b2"] { bottom:2px; top:auto; left:calc(2px + (32px * .58) + 2px); right:auto; }
+.admin-tree-card .card-role-icon[data-role-slot="b3"] { bottom:2px; top:auto; right:calc(2px + (32px * .58) + 2px); left:auto; }
+
+
+/* v18.6.3: exact horizontal name centering, including long first/last names.
+   A positioned overlay is anchored to the CARD box, never to a grid item's
+   min-content width (which otherwise produces asymmetric overflow).  Each
+   line uses the SAME full-width center axis; the renderer fits the longest
+   line to the available width before rendering.  Corner badges remain above
+   the text; years/connector layers are unchanged. */
+.tree-page .site-card-name,
+.tree-page .site-card.has-card-icons .site-card-name {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  right: auto;
+  bottom: auto;
+  width: calc(100% - 16px);
+  max-width: calc(100% - 16px);
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 6px;
+  text-align: center;
+}
+.tree-page .site-card-name-line {
+  display: block;
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  white-space: nowrap;
+  text-align: center;
+}
+/* Apply the same centered-line treatment in Admin card previews. */
+.admin-tree-card-name-line,
+.admin-feature-sample-card .admin-feature-sample-name-line {
+  display: block;
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  white-space: nowrap;
+  text-align: center;
+}
+
+/* --- v19.0 four-corner card-icon layout ---
+   Smaller badges sit tighter to the card corners. Drum Major is always TL;
+   Section Leader / Guard Captain is always TR. JS limits visible badges to
+   four and fills BL/BR before reusing an unreserved top corner. */
+:root {
+  --yjmb-icon-box: 20px;
+  --yjmb-icon-edge: 1px;
+  --yjmb-icon-gap: 2px;
+}
+.card-role-icon {
+  width: var(--yjmb-icon-box);
+  height: var(--yjmb-icon-box);
+  display: grid;
+  place-items: center;
+  overflow: visible;
+  z-index: 4;
+}
+.card-role-icon img,
+.card-role-icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  box-sizing: border-box;
+  padding: 0 !important;
+}
+.card-role-icon[data-role-slot="tl"] { top: var(--yjmb-icon-edge); bottom:auto; left:var(--yjmb-icon-edge); right:auto; }
+.card-role-icon[data-role-slot="tr"] { top: var(--yjmb-icon-edge); bottom:auto; right:var(--yjmb-icon-edge); left:auto; }
+.card-role-icon[data-role-slot="bl"] { bottom: var(--yjmb-icon-edge); top:auto; left:var(--yjmb-icon-edge); right:auto; }
+.card-role-icon[data-role-slot="br"] { bottom: var(--yjmb-icon-edge); top:auto; right:var(--yjmb-icon-edge); left:auto; }
+
+/* Admin tree cards are rendered at roughly 58% of the production card size. */
+.admin-tree-card .card-role-icon {
+  width: calc(20px * .58);
+  height: calc(20px * .58);
+}
+.admin-tree-card .card-role-icon[data-role-slot="tl"] { top:1px; bottom:auto; left:1px; right:auto; }
+.admin-tree-card .card-role-icon[data-role-slot="tr"] { top:1px; bottom:auto; right:1px; left:auto; }
+.admin-tree-card .card-role-icon[data-role-slot="bl"] { bottom:1px; top:auto; left:1px; right:auto; }
+.admin-tree-card .card-role-icon[data-role-slot="br"] { bottom:1px; top:auto; right:1px; left:auto; }
+
+
+/* --- v19.1.1 exact geometric card-name centering ---
+   Corner badges must never move a member's name away from the center of the
+   card.  The name layer is an absolute, symmetric overlay centered on the
+   card box; icon-aware font fitting remains symmetric in JavaScript. */
+.tree-page .site-card-name,
+.tree-page .site-card.has-card-icons .site-card-name {
+  position: absolute !important;
+  top: 50% !important;
+  left: 50% !important;
+  right: auto !important;
+  bottom: auto !important;
+  width: calc(100% - 16px) !important;
+  max-width: calc(100% - 16px) !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  transform: translate(-50%, -50%) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  justify-content: center !important;
+  text-align: center !important;
+  pointer-events: none;
+}
+.tree-page .site-card-name-line {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  white-space: nowrap;
+  text-align: center;
+}
+
+/* Admin tree cards use the same geometric center as production cards. */
+.admin-tree-card-name {
+  position: absolute !important;
+  top: 50% !important;
+  left: 50% !important;
+  right: auto !important;
+  bottom: auto !important;
+  width: calc(100% - 10px) !important;
+  max-width: calc(100% - 10px) !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  transform: translate(-50%, -50%) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  justify-content: center !important;
+  text-align: center !important;
+  pointer-events: none;
+}
+.admin-tree-card-name-line {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* Keep the Feature Preview on the identical center axis even when its four
+   corner icon slots are populated asymmetrically. */
+.admin-feature-sample-card .admin-feature-sample-name,
+.admin-feature-sample-card.has-card-icons .admin-feature-sample-name {
+  position: absolute !important;
+  top: 50% !important;
+  left: 50% !important;
+  right: auto !important;
+  bottom: auto !important;
+  width: calc(100% - 16px) !important;
+  max-width: calc(100% - 16px) !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  transform: translate(-50%, -50%) !important;
+  align-items: stretch !important;
+  text-align: center !important;
+  pointer-events: none;
+}
+.admin-feature-sample-card .admin-feature-sample-name-line {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  text-align: center;
+  white-space: nowrap;
+}

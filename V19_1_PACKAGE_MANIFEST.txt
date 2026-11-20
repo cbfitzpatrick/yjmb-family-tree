@@ -1,0 +1,10 @@
+YJMB v19.1 patch
+
+Purpose:
+- Parse Position and Year to determine card leadership/position icons.
+- Retire duplicate leadership metadata fields from new schema additions and people-facing editors/details.
+- Add Yourself writes Position and Year instead of separate marching/informal/Band Club leadership fields.
+- Existing legacy leadership columns are preserved in the workbook for historical recovery but are hidden and no longer authoritative.
+- Old queued payloads are converted into Position and Year by the protected updater.
+
+No workbook, encrypted tree payload, secrets, or Markdown files are included.

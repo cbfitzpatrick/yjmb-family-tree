@@ -1,0 +1,22 @@
+YJMB v18.6 card icon asset patch
+
+Purpose:
+- Stores every prepared card/leadership icon as a PNG under docs/icons and web_template/icons.
+- Preserves the newest uploaded PNG artwork exactly for Section Leader, RAT Parent, Band Club, and Drum Major.
+- Converts the six remaining inline SVG role drawings to transparent PNG assets.
+- Removes inline SVG role-icon generation from app.js/admin.js.
+- Updates asset reload lists to use the icons folder.
+
+PNG role assets:
+section-leader-icon.png
+guard-captain-icon.png
+drum-major-icon.png
+rat-parent-icon.png
+mcm-icon.png
+libraries-icon.png
+uniforms-icon.png
+informal-leadership-icon.png
+other-leadership-icon.png
+band-club-icon.png
+
+No workbook, encrypted tree payload, secrets, or Markdown files are included.

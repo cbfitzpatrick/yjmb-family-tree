@@ -1,7 +1,7 @@
 'use strict';
 
 (() => {
-  const RELEASE = 'v18.5';
+  const RELEASE = 'v19.1.1';
   const STORAGE_KEY = 'yjmbReleaseNoticeDismissedVersion';
   const SESSION_KEY = `yjmbReleaseNoticeSeen:${RELEASE}`;
   try {
@@ -12,52 +12,31 @@
 
   const VERSION_SECTIONS = [
     {
-      version: 'v18.5',
+      version: 'v19.1.1',
       items: [
-        'Fixed family-tree connections that could disappear on phones and other coarse-pointer/mobile browsers.',
-        'Removed the connector rendering dependency on SVG filters and now paints one unified relationship path in a pale-gray underlay plus black foreground pass.',
-        'Added a minimum on-screen connector width on mobile so the full-height 100% view cannot shrink relationship lines below a visible size.',
+        'Member names are now locked to the exact geometric center of every card regardless of which corner role icons are present.',
+        'The same centering rule is used in the normal tree, Admin tree, and Admin Feature Preview.',
+        'Icon-aware font fitting remains symmetric, so long names can shrink to avoid corner badges without shifting left or right.',
       ],
     },
     {
-      version: 'v18.4',
+      version: 'v19.1',
       items: [
-        'Fixed isolated straight-down family trees whose connector path could disappear when Show tree / Show connected tree was used.',
-        'Made the connector halo lighter and slightly more opaque while keeping the black relationship line in front of it.',
-        'Expanded this release notice into a scrollable version-18 history.',
+        'Position and Year is now the single source used to determine leadership and special-position icons on member cards.',
+        'Card role icons are enabled for the normal tree and are derived from Position and Year rather than duplicate leadership columns.',
+        'Add Yourself now records positions directly in Position and Year instead of creating separate marching-band, informal-leadership, and Band Club leadership fields.',
+        'Member details, Correction, and Admin Spreadsheet/Editor hide the retired duplicate leadership metadata fields.',
+        'Existing historical leadership columns are preserved in the protected workbook for recovery, but new updates no longer populate or depend on them.',
+        'Older queued submissions are converted into Position and Year so leadership information is not lost during the transition.',
       ],
     },
     {
-      version: 'v18.3',
+      version: 'v19.0',
       items: [
-        'Improved focused-tree connector ownership handling for older/generated tree payloads.',
-        'When a newly added person names an existing VET but is missing from that VET\'s RAT list, the new RAT is inserted as RAT 1 and existing RAT entries shift down safely.',
-      ],
-    },
-    {
-      version: 'v18.2',
-      items: [
-        'Improved Show tree filtering so unrelated trees disappear without intentionally removing the selected family\'s connections.',
-        'Strengthened the gray connector halo around the black relationship network.',
-        'Correction-page VET/RAT additions can create missing people as real rows/cards and reciprocate the relationship.',
-        'Lightened several section colors to improve black-text readability while retaining the section-family color progression.',
-      ],
-    },
-    {
-      version: 'v18.1',
-      items: [
-        'Changed 100% zoom to mean the full vertical height of the tree fits in the viewport; Reset returns to that baseline.',
-        'Changed visible family connections to one unified SVG path with a black relationship stroke and a translucent gray halo behind it.',
-      ],
-    },
-    {
-      version: 'v18',
-      items: [
-        'Introduced the version-18 section palette and standardized the section label to Saxophone.',
-        'Add Yourself can merge new information into an existing matching profile instead of forcing a separate correction flow.',
-        'New VETs and RATs that do not yet exist can be created as real person rows/cards and reciprocated automatically.',
-        'Added the notice that protected online changes may take a few minutes to rebuild and appear on the live tree.',
-        'Reduced public-repository Markdown documentation to the simplified root README workflow.',
+        'Moved the card-role artwork to PNG assets in dedicated icons folders for consistent source and deployed-site behavior.',
+        'Reduced role-icon size and moved badges closer to the four card corners so names remain easier to read.',
+        'Drum Major always occupies the top-left corner; Section Leader or Guard Captain always occupies the top-right corner.',
+        'Cards display at most four role icons. Other roles fill the bottom corners first and can use an unreserved top corner when needed.',
       ],
     },
   ];
@@ -84,18 +63,17 @@
       <div class="release-notice-header">
         <div>
           <p class="details-kicker">YJMB Family Tree ${RELEASE}</p>
-          <h2>Version 18 updates</h2>
+          <h2>Version 19 updates</h2>
         </div>
       </div>
       <div class="release-notice-body">
         <p class="release-desktop-note"><strong>This site works best on a desktop or laptop.</strong> Phone support is available, but the full tree is easier to navigate on a larger screen.</p>
-        <p>Scroll through the version 18 changes below. The newest update is listed first.</p>
-        <div class="release-history" aria-label="Version 18 update history">
+        <div class="release-history" aria-label="Version 19 update history">
           ${historyHtml}
         </div>
         <div class="release-notice-actions">
           <button class="secondary-button" type="button" data-release-close>Continue</button>
-          <button class="primary-button" type="button" data-release-dismiss>Don’t show again for v18.5</button>
+          <button class="primary-button" type="button" data-release-dismiss>Don’t show again for v19.1.1</button>
         </div>
       </div>`;
     document.body.appendChild(dialog);
@@ -110,8 +88,6 @@
       try { localStorage.setItem(STORAGE_KEY, RELEASE); } catch (_) { /* no-op */ }
       close();
     });
-    // There is deliberately no X button. Escape behaves like Continue so the
-    // modal never traps a keyboard user.
     dialog.addEventListener('cancel', (event) => {
       event.preventDefault();
       close();

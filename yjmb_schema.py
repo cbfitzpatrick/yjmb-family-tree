@@ -25,22 +25,16 @@ def header_key(value: object) -> str:
     return re.sub(r"[^a-z0-9]", "", norm(value).casefold())
 
 
-# These columns are append-only compatibility fields. Existing workbook columns
-# are never renamed or overwritten by the migration helper.
+# v19.1 keeps the workbook schema compact. Existing historical leadership
+# columns are never deleted, but new workbooks/updates use Position and Year as
+# the single source for position/leadership titles and card-icon inference.
 V17_OPTIONAL_COLUMNS: tuple[str, ...] = (
     "Tree Display Name Preference",
     "Tree Display Last Name Preference",
     "Section Nicknames",
     "Specific Instruments",
     "Favorite Tech Band Memory",
-    "Marching Band Leadership Role(s)",
-    "Served in Informal Leadership Position",
-    "Informal Leadership Position(s)",
-    "Marching Band Leadership History",
-    "Served in Band Club Leadership Position",
-    "Band Club Leadership Position(s)",
-    "Band Club Leadership History",
-    "Leadership Position Classification",
+    "Position and Year",
     "Has Nickname",
     "Changed Last Name Since Band",
     "Has Been in Multiple Sections",

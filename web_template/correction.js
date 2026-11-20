@@ -7,6 +7,17 @@ let turnstileToken = '';
 let turnstileWidgetId = null;
 const originalValues = new Map();
 
+const RETIRED_LEADERSHIP_FIELD_KEYS = new Set([
+  'marchingbandleadershiproles', 'servedininformalleadershipposition',
+  'informalleadershippositions', 'marchingbandleadershiphistory',
+  'servedinbandclubleadershipposition', 'bandclubleadershippositions',
+  'bandclubleadershiphistory', 'leadershippositionclassification',
+]);
+
+function normalizedFieldKey(label) {
+  return String(label || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
 function fieldId(label, index) {
   return `field-${index}-${String(label).toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
 }
@@ -21,7 +32,7 @@ function renderFields() {
   container.replaceChildren();
   originalValues.clear();
   const fields = Array.isArray(person.sourceFields) && person.sourceFields.length
-    ? person.sourceFields.map((field) => ({ ...field }))
+    ? person.sourceFields.filter((field) => !RETIRED_LEADERSHIP_FIELD_KEYS.has(normalizedFieldKey(field.label))).map((field) => ({ ...field }))
     : [
         { label: 'Given/Preferred Name', value: person.givenPreferredName || '' },
         { label: 'Nickname', value: person.personalNickname || person.nickname || '' },
@@ -32,6 +43,10 @@ function renderFields() {
         { label: 'Favorite Tech Band Memory', value: person.favoriteTechBandMemory || '' },
       ];
   const keys = new Set(fields.map((field) => String(field.label || '').toLowerCase().replace(/[^a-z0-9]+/g, '')));
+  if (!keys.has('positionandyear')) {
+    fields.push({ label: 'Position and Year', value: person.positionAndYear || '' });
+    keys.add('positionandyear');
+  }
   if (!keys.has('treedisplaynamepreference')) {
     fields.push({ label: 'Tree Display Name Preference', value: person.treeDisplayNamePreference || 'Given/Preferred Name' });
   }

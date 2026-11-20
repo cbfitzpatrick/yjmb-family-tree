@@ -26,17 +26,91 @@ const viewport = q('#viewport');
 const scaledStage = q('#scaled-stage');
 const stage = q('#stage');
 const bands = q('#bands');
+const yearRail = q('#year-rail');
 const cardsLayer = q('#cards');
 const connectorSvg = q('#connectors');
-const yearAxis = q('#year-axis');
-const yearAxisTrack = q('#year-axis-track');
 const status = q('#status');
 
 const SPECIAL_SECTION_BLUE = '#d5defe';
 const PACKED_TREE_GAP = 28;
 const TREE_VIEW_STORAGE_KEY = 'yjmbTreeViewV18_1';
 const MOBILE_TREE_MEDIA = '(max-width: 820px), (pointer: coarse) and (max-width: 950px)';
-const ASSET_RELOAD_FILES = ['styles.css', 'app.js', 'secure-data.js', 'developer-export.js', 'admin-mail.js', 'section-leader-icon.png', 'rat-parent-icon.png', 'band-club-icon.png'];
+const ROLE_ICON_ASSETS = Object.freeze({
+  'section-leader': 'icons/section-leader-icon.png',
+  'guard-captain': 'icons/guard-captain-icon.png',
+  'drum-major': 'icons/drum-major-icon.png',
+  'rat-parent': 'icons/rat-parent-icon.png',
+  'mcm': 'icons/mcm-icon.png',
+  'libraries': 'icons/libraries-icon.png',
+  'uniforms': 'icons/uniforms-icon.png',
+  'informal-leadership': 'icons/informal-leadership-icon.png',
+  'other-leadership': 'icons/other-leadership-icon.png',
+  'band-club': 'icons/band-club-icon.png',
+});
+const RETIRED_LEADERSHIP_FIELD_KEYS = new Set([
+  'marchingbandleadershiproles',
+  'servedininformalleadershipposition',
+  'informalleadershippositions',
+  'marchingbandleadershiphistory',
+  'servedinbandclubleadershipposition',
+  'bandclubleadershippositions',
+  'bandclubleadershiphistory',
+  'leadershippositionclassification',
+]);
+
+function normalizedFieldKey(label) {
+  return String(label || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+function positionAndYearValue(person) {
+  if (String(person?.positionAndYear || '').trim()) return String(person.positionAndYear).trim();
+  const field = (person?.sourceFields || []).find((item) => normalizedFieldKey(item?.label) === 'positionandyear');
+  return String(field?.value || '').trim();
+}
+
+function positionYearIconKinds(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return [];
+  const out = [];
+  const add = (kind) => { if (!out.includes(kind)) out.push(kind); };
+  const entries = raw.split(/[;|\n]+/).map((entry) => entry.trim()).filter(Boolean);
+  for (const entry of entries) {
+    let recognized = false;
+    const tests = [
+      [/\bsection\s+leaders?\b/i, 'section-leader'],
+      [/\b(?:color\s+guard\s+)?guard\s+captains?\b|\bcolor\s+guard\s+captains?\b/i, 'guard-captain'],
+      [/\bdrum\s+majors?\b/i, 'drum-major'],
+      [/\brat\s+(?:parents?|moms?|dads?)\b/i, 'rat-parent'],
+      [/\bmcm\b/i, 'mcm'],
+      [/\blibraries?\b|\blibrary\b/i, 'libraries'],
+      [/\buniforms?\b/i, 'uniforms'],
+    ];
+    for (const [pattern, kind] of tests) {
+      if (pattern.test(entry)) { add(kind); recognized = true; }
+    }
+    if (/\b(?:yellow\s+jacket\s+)?band\s+club\b|\byjbc\b/i.test(entry)) {
+      add('band-club'); recognized = true;
+    }
+    if (/\bhype[\s-]*(?:man|men|person|people|woman|women|guy|girl)\b|\bhypeman\b|\binformal(?:\s+leadership)?\b/i.test(entry)) {
+      add('informal-leadership'); recognized = true;
+    }
+    if (/\bstaff\s+(?:assistants?|ass(?:\.|\b))|\boperations?\b|\bops\b|\bprops?\b/i.test(entry)) {
+      add('other-leadership'); recognized = true;
+    }
+    if (!recognized) {
+      const residual = entry
+        .replace(/\b(?:spring|summer|fall|autumn|winter)?\s*(?:19|20)\d{2}(?:\s*(?:-|–|—|to|through|thru)\s*(?:19|20)?\d{2})?\b/gi, ' ')
+        .replace(/\b(?:position|positions|year|years|marching\s+band|leadership|served\s+as|serve(?:d)?\s+as)\b/gi, ' ')
+        .replace(/[()\[\]{},:/+_-]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (/[A-Za-z]/.test(residual)) add('other-leadership');
+    }
+  }
+  return out;
+}
+
+const ASSET_RELOAD_FILES = ['shako_buzz_transparent.png', 'favicon.ico', 'styles.css', 'app.js', 'secure-data.js', 'developer-export.js', 'admin-mail.js', ...Object.values(ROLE_ICON_ASSETS)];
 
 function normalizeSearch(value) {
   return String(value ?? '').normalize('NFKD').toLowerCase().replace(/\s+/g, ' ').trim();
@@ -165,17 +239,11 @@ function updateConnectorStrokeWidths() {
   }
 }
 
-function renderBands(data) {
-  bands.replaceChildren();
-  for (const band of data.yearBands || []) {
-    const el = document.createElement('div');
-    el.className = 'year-band';
-    el.style.top = `${band.y}px`;
-    el.style.background = band.color;
-    bands.appendChild(el);
-  }
-}
-
+// Year backgrounds and frozen labels share a single scaled coordinate system.
+// The year rail stays in horizontal view via sticky-left positioning, but takes
+// ZERO vertical layout height. Each absolute label cell gets the same top/height
+// as its background strip, so labels cannot drift while cards remain at Y=0.
+// Do NOT add sticky top:0 or a nonzero rail height (v18.6.1 regression).
 function yearAxisFontSize() {
   return Math.max(9, Math.min(25, 25 * state.scale));
 }
@@ -184,57 +252,69 @@ function measureYearAxisWidth() {
   if (!state.data) return 0;
   const canvas = document.createElement('canvas');
   const context = canvas.getContext('2d');
-  const fontSize = yearAxisFontSize();
-  if (!context) return Math.ceil(4.3 * fontSize);
-  context.font = `800 ${fontSize}px Calibri, Arial, sans-serif`;
-  const widest = Math.max(0, ...(state.data.yearBands || []).map((band) => context.measureText(String(band.label)).width));
-  return Math.ceil(Math.max(widest + 18, fontSize * 3.6));
+  const size = yearAxisFontSize();
+  if (!context) return Math.ceil(4.3 * size);
+  context.font = `800 ${size}px Calibri, Arial, sans-serif`;
+  const widest = Math.max(0, ...(state.data.yearBands || []).map((b) => context.measureText(String(b.label)).width));
+  return Math.ceil(Math.max(widest + 18, size * 3.6));
 }
 
 function renderYearAxis() {
-  if (!state.data || !yearAxis || !yearAxisTrack) return;
-  yearAxisTrack.replaceChildren();
+  if (!state.data) return;
+  const data = state.data;
   const fontSize = yearAxisFontSize();
-  const axisWidth = measureYearAxisWidth();
-  state.yearAxisWidth = axisWidth;
-  // v17: no spacer is inserted between the frozen year rail and the stage.
-  state.contentOffsetX = axisWidth;
-
-  yearAxis.style.width = `${axisWidth}px`;
-  yearAxisTrack.style.width = `${axisWidth}px`;
-  yearAxisTrack.style.height = `${state.data.height * state.scale}px`;
-
-  for (const band of state.data.yearBands || []) {
-    const label = document.createElement('div');
-    label.className = 'sticky-year-label';
-    label.style.top = `${band.y * state.scale}px`;
-    label.style.height = `${state.data.yearStripHeight * state.scale}px`;
-    label.style.fontSize = `${fontSize}px`;
-    label.style.background = band.color;
-    label.style.color = band.textColor;
-    label.style.width = `${axisWidth}px`;
-    label.textContent = band.label;
-    yearAxisTrack.appendChild(label);
-  }
-
+  state.yearAxisWidth = measureYearAxisWidth();
+  state.contentOffsetX = state.yearAxisWidth;
+  const totalWidth = state.contentOffsetX + state.displayWidth * state.scale;
+  scaledStage.style.width = `${totalWidth}px`;
+  scaledStage.style.height = `${data.height * state.scale}px`;
   stage.style.left = `${state.contentOffsetX}px`;
-  scaledStage.style.width = `${state.contentOffsetX + state.displayWidth * state.scale}px`;
-  scaledStage.style.height = `${state.data.height * state.scale}px`;
-  syncYearAxisGeometry();
-}
 
-function syncYearAxisScroll() {
-  if (!yearAxisTrack || !viewport || viewport.hidden) return;
-  yearAxisTrack.style.transform = `translate3d(0, ${-viewport.scrollTop}px, 0)`;
-}
+  // Full-width year-color strips remain behind the cards/connectors, while a
+  // separate frozen left rail reuses the exact same geometry so the labels
+  // cannot drift away from their rows at high zoom.
+  bands.replaceChildren();
+  bands.style.width = `${totalWidth}px`;
+  bands.style.height = `${data.height * state.scale}px`;
+  yearRail.replaceChildren();
+  yearRail.style.width = `${state.yearAxisWidth}px`;
+  // A sticky element participates in normal layout.  It MUST have zero flow
+  // height: giving it the entire tree height shifts the absolutely positioned
+  // stage's static Y position by one full tree (the v18.6.1 regression).
+  // The independently positioned year-rail-band children still cover the
+  // entire scaled tree, using precisely the same Y coordinates as #bands.
+  yearRail.style.height = '0px';
 
-function syncYearAxisGeometry() {
-  if (!yearAxis || !viewport || viewport.hidden) return;
-  const rect = viewport.getBoundingClientRect();
-  yearAxis.style.left = `${Math.round(rect.left)}px`;
-  yearAxis.style.top = `${Math.round(rect.top)}px`;
-  yearAxis.style.height = `${Math.round(rect.height)}px`;
-  syncYearAxisScroll();
+  const bandFragment = document.createDocumentFragment();
+  const railFragment = document.createDocumentFragment();
+  for (const band of data.yearBands || []) {
+    const top = `${Number(band.y) * state.scale}px`;
+    const height = `${Number(data.yearStripHeight) * state.scale}px`;
+
+    const strip = document.createElement('div');
+    strip.className = 'year-band';
+    strip.style.top = top;
+    strip.style.height = height;
+    strip.style.background = band.color;
+    bandFragment.appendChild(strip);
+
+    const railBand = document.createElement('div');
+    railBand.className = 'year-rail-band';
+    railBand.style.top = top;
+    railBand.style.height = height;
+    railBand.style.background = band.color;
+
+    const label = document.createElement('span');
+    label.className = 'sticky-year-label';
+    label.style.width = `${state.yearAxisWidth}px`;
+    label.style.fontSize = `${fontSize}px`;
+    label.style.color = band.textColor;
+    label.textContent = band.label;
+    railBand.appendChild(label);
+    railFragment.appendChild(railBand);
+  }
+  bands.appendChild(bandFragment);
+  yearRail.appendChild(railFragment);
 }
 
 function buildTreeIndexes(data) {
@@ -339,38 +419,62 @@ function sectionViewCardBackground(person) {
     : '#FFFFFF';
 }
 
-function inlineRoleIconSvg(kind) {
-  const icons = {
-    'drum-major': '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5c1.7-.8 3.2.2 3.6 1.7l.6 2.3.8-4.6c.2-1.2 2-1 1.9.3l-.4 5.2.9-4.3c.3-1.2 2.1-.8 1.8.4l-.9 4.3.9-3.3c.3-1.1 2-.6 1.7.5l-1.1 4.2c-.6 2.4-2 4-4 4.7l-2.8 1-2.3-6.1L4 5.5Zm16 0c-1.7-.8-3.2.2-3.6 1.7l-.6 2.3-.8-4.6c-.2-1.2-2-1-1.9.3l.4 5.2-.9-4.3c-.3-1.2-2.1-.8-1.8.4l.9 4.3-.9-3.3c-.3-1.1-2-.6-1.7.5l1.1 4.2c.6 2.4 2 4 4 4.7l2.8 1 2.3-6.1L20 5.5Z" fill="currentColor"/></svg>',
-    'mcm': '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h4l1.3-2h5.4L16 7h4v12H4Z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="13" r="4" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
-    'libraries': '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5.5c3.2-.8 6-.2 9 1.8v12c-3-2-5.8-2.6-9-1.8Zm18 0c-3.2-.8-6-.2-9 1.8v12c3-2 5.8-2.6 9-1.8Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
-    'uniforms': '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 4 4 2 4-2 4 4-3 3v9H7v-9L4 8Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M12 6v14M9.5 10h5" stroke="currentColor" stroke-width="1.4"/></svg>',
-    'guard-captain': '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3v18M8 4l10 3-10 4Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>',
-    'informal-leadership': '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10h4l8-4v12l-8-4H4Zm4 4 2 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>',
-    'other-leadership': '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9Z" fill="none" stroke="currentColor" stroke-width="1.7"/></svg>',
-  };
-  return icons[kind] || '';
-}
-
 function cardIconElement(kind) {
   const wrapper = document.createElement('span');
   wrapper.className = `card-status-icon card-role-icon icon-${kind}`;
   wrapper.dataset.iconKind = kind;
   wrapper.title = kind.replaceAll('-', ' ');
-  const imageAssets = {
-    'section-leader': 'section-leader-icon.png',
-    'rat-parent': 'rat-parent-icon.png',
-    'band-club': 'band-club-icon.png',
-  };
-  if (imageAssets[kind]) {
-    const img = document.createElement('img');
-    img.src = imageAssets[kind];
-    img.alt = '';
-    wrapper.appendChild(img);
-  } else {
-    wrapper.innerHTML = inlineRoleIconSvg(kind);
-  }
+  const asset = ROLE_ICON_ASSETS[kind];
+  if (!asset) { wrapper.hidden = true; return wrapper; }
+  const img = document.createElement('img');
+  img.src = asset;
+  img.alt = '';
+  img.decoding = 'async';
+  wrapper.appendChild(img);
   return wrapper;
+}
+
+function assignCardIconSlots(elements) {
+  // v19.0: cards show at most four role icons, one per true corner.
+  // Drum Major permanently owns the upper-left corner. Section Leader /
+  // Guard Captain permanently owns the upper-right corner. Other roles fill
+  // the lower corners first and can overflow upward only into an unreserved
+  // corner. Extra roles remain available in the member details.
+  const candidates = elements.filter((el) => el && !el.hidden);
+  for (const el of elements) {
+    delete el.dataset.roleSlot;
+    el.hidden = true;
+  }
+
+  const drumMajor = candidates.find((el) => el.dataset.iconKind === 'drum-major');
+  // Guard Captain is the section-leader equivalent for Color Guard. If bad
+  // legacy data contains both roles, show the Guard Captain badge rather than
+  // stacking two badges in the same reserved corner.
+  const sectionLeader = candidates.find((el) => el.dataset.iconKind === 'guard-captain')
+    || candidates.find((el) => el.dataset.iconKind === 'section-leader');
+
+  const shown = new Set();
+  const place = (el, slot) => {
+    if (!el || shown.size >= 4) return;
+    el.dataset.roleSlot = slot;
+    el.hidden = false;
+    shown.add(el);
+  };
+
+  place(drumMajor, 'tl');
+  place(sectionLeader, 'tr');
+
+  const reservedKinds = new Set(['drum-major', 'section-leader', 'guard-captain']);
+  const overflow = candidates.filter((el) => !reservedKinds.has(el.dataset.iconKind));
+  const slots = ['bl', 'br'];
+  if (!drumMajor) slots.push('tl');
+  if (!sectionLeader) slots.push('tr');
+
+  for (const el of overflow) {
+    const slot = slots.shift();
+    if (!slot || shown.size >= 4) break;
+    place(el, slot);
+  }
 }
 
 function cardNameParts(person) {
@@ -389,11 +493,14 @@ function cardNameFontSize(parts, cardWidth, hasIcons = false) {
   if (!context) return base;
   context.font = `${base}px Arial, Helvetica, sans-serif`;
   const maxMeasured = Math.max(context.measureText(parts.given || '').width, context.measureText(parts.family || '').width, 1);
-  // Do not reserve empty icon corners. Normal cards need only a modest edge
-  // margin; icon-bearing cards reserve additional room for the prepared badges.
-  const reserved = hasIcons ? 44 : 24;
-  const usable = Math.max(70, Number(cardWidth || 150) - reserved);
-  return Math.max(13, Math.min(base, Math.floor(base * usable / maxMeasured)));
+  // The text block is anchored at the card's geometric center, not sized by
+  // CSS grid's intrinsic minimum width.  Fit the longest *individual* line
+  // within that centered block (including the border/safety inset).  This
+  // avoids a long first or last name pushing the whole block toward the right.
+  const sourceWidth = Math.max(40, Number(cardWidth) || 150);
+  const usable = Math.max(20, sourceWidth - (hasIcons ? 42 : 18));
+  const fitted = base * usable / maxMeasured;
+  return Math.max(8.5, Math.min(base, Math.floor(fitted * 10) / 10));
 }
 
 function renderCards(data) {
@@ -440,7 +547,7 @@ function renderCards(data) {
       secondLine.textContent = parts.family;
       name.appendChild(secondLine);
     }
-    const hasCardIcons = Boolean(data.cardIconsEnabled && ((person.leadershipIcons || []).length || person.bandClubLeadership));
+    const hasCardIcons = Boolean(data.cardIconsEnabled && positionYearIconKinds(positionAndYearValue(person)).length);
     name.style.fontSize = `${cardNameFontSize(parts, card.width, hasCardIcons)}px`;
     builtCard.classList.toggle('has-card-icons', hasCardIcons);
     builtCard.appendChild(name);
@@ -450,8 +557,10 @@ function renderCards(data) {
     // data migration. RAT Parent uses the supplied cap artwork; current RAT is
     // deliberately not represented by that icon.
     if (data.cardIconsEnabled) {
-      for (const kind of person.leadershipIcons || []) builtCard.appendChild(cardIconElement(kind));
-      if (person.bandClubLeadership) builtCard.appendChild(cardIconElement('band-club'));
+      const iconKinds = positionYearIconKinds(positionAndYearValue(person));
+      const icons = iconKinds.map(cardIconElement);
+      assignCardIconSlots(icons);
+      for (const icon of icons) builtCard.appendChild(icon);
     }
 
     button.appendChild(builtCard);
@@ -538,7 +647,7 @@ function setScale(next, { preserveFocus = true } = {}) {
   if (focus) {
     viewport.scrollLeft = Math.max(0, state.contentOffsetX + focus.logicalX * state.scale - focus.anchorX);
     viewport.scrollTop = Math.max(0, focus.logicalY * state.scale - focus.anchorY);
-    syncYearAxisScroll();
+  
   }
 }
 
@@ -548,7 +657,7 @@ function resetZoomToFullHeight() {
   setScale(state.baseScale, { preserveFocus: false });
   viewport.scrollTop = 0;
   viewport.scrollLeft = 0;
-  syncYearAxisScroll();
+
 }
 
 function refreshBaseScaleForViewport() {
@@ -798,6 +907,7 @@ function renderDetails(person) {
       ];
 
   for (const field of sourceFields) {
+    if (RETIRED_LEADERSHIP_FIELD_KEYS.has(normalizedFieldKey(field.label))) continue;
     if (field.value === null || field.value === undefined || String(field.value).trim() === '') continue;
     const row = document.createElement('div');
     row.className = 'detail-row';
@@ -958,7 +1068,7 @@ function fitVisible() {
   setScale(scale, { preserveFocus: false });
   viewport.scrollLeft = Math.max(0, state.contentOffsetX + (bounds.minX - padding) * state.scale - state.yearAxisWidth);
   viewport.scrollTop = Math.max(0, (bounds.minY - padding) * state.scale);
-  syncYearAxisScroll();
+
 }
 
 function locatePerson(personId, { ensureVisible = false } = {}) {
@@ -1030,7 +1140,7 @@ function restoreTreeView() {
   requestAnimationFrame(() => {
     viewport.scrollLeft = Math.max(0, Number(saved.scrollLeft) || 0);
     viewport.scrollTop = Math.max(0, Number(saved.scrollTop) || 0);
-    syncYearAxisScroll();
+  
     if (saved.selectedPersonId && state.people.has(saved.selectedPersonId)) {
       selectPerson(saved.selectedPersonId, { locate: false });
     }
@@ -1060,7 +1170,7 @@ function setMobileToolbarVisible(visible) {
     return;
   }
   document.body.classList.toggle('mobile-toolbar-hidden', !visible);
-  requestAnimationFrame(syncYearAxisGeometry);
+
 }
 
 function bindMobileToolbarToggle() {
@@ -1112,7 +1222,6 @@ async function main() {
     state.displayWidth = data.width;
     buildTreeIndexes(data);
     stage.style.height = `${data.height}px`;
-    renderBands(data);
     renderConnectors(data);
     renderCards(data);
     renderSectionFilter();
@@ -1126,7 +1235,7 @@ async function main() {
       applyVisibility();
     }
     if (isMobileTree()) setMobileToolbarVisible(false);
-    requestAnimationFrame(syncYearAxisGeometry);
+
   } catch (error) {
     console.error(error);
     if (error?.code === 'AUTH_REQUIRED') { window.location.replace('index.html'); return; }
@@ -1140,10 +1249,9 @@ q('#zoom-reset').addEventListener('click', resetZoomToFullHeight);
 q('#zoom-fit')?.addEventListener('click', fitVisible);
 q('#reload-assets')?.addEventListener('click', reloadPageAssets);
 bindMobileToolbarToggle();
-viewport.addEventListener('scroll', syncYearAxisScroll, { passive: true });
 window.addEventListener('pagehide', saveTreeView);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveTreeView(); });
-window.addEventListener('resize', () => { if (!isMobileTree()) setMobileToolbarVisible(true); refreshBaseScaleForViewport(); syncYearAxisGeometry(); }, { passive: true });
+window.addEventListener('resize', () => { if (!isMobileTree()) setMobileToolbarVisible(true); refreshBaseScaleForViewport(); }, { passive: true });
 q('#search').addEventListener('input', updateSearchResults);
 q('#search').addEventListener('keydown', (event) => {
   if (event.key === 'Enter') {
