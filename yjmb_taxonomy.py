@@ -209,6 +209,7 @@ FORMAL_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
 
 INFORMAL_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("Hype Man", re.compile(r"\bhype[\s-]*(?:man|men|person|people|woman|women|guy|girl)\b|\bhypeman\b", re.I)),
+    ("Dohmeister", re.compile(r"\bdoh[\s-]*meisters?\b", re.I)),
 )
 
 _SPLIT_ROLES = re.compile(r"\s*(?:,|;|\||/|\band\b)\s*", re.I)
@@ -303,7 +304,7 @@ def leadership_icon_flags(formal_text: object, informal_text: object, informal_f
 
 
 _BAND_CLUB_PATTERN = re.compile(r"\b(?:yellow\s+jacket\s+)?band\s+club\b|\byjbc\b", re.I)
-_POSITION_YEAR_SPLIT = re.compile(r"[;|\n]+")
+_POSITION_YEAR_SPLIT = re.compile(r"[;,|\n]+")
 _YEARISH = re.compile(
     r"\b(?:spring|summer|fall|autumn|winter)?\s*(?:19|20)\d{2}"
     r"(?:\s*(?:-|–|—|to|through|thru)\s*(?:19|20)?\d{2})?\b",
@@ -321,10 +322,10 @@ def position_year_icon_flags(text: object) -> list[str]:
     Years may appear before or after a title (``2022 RAT Parent`` or
     ``Section Leader 2022``), may be ranges, and entries may be separated by
     semicolons/newlines. Known leadership titles get their dedicated icon.
-    Band Club entries get the Band Club icon. Recognizable informal titles get
-    the informal icon. Any other non-empty position title gets the generic
-    other-leadership icon, which intentionally covers historical titles such as
-    Dohmeister without needing another workbook column.
+    Band Club entries get the Band Club icon. Recognizable informal titles,
+    including Dohmeister, get the informal-leadership icon. Any other non-empty
+    position title gets the generic other-leadership icon without needing a
+    separate workbook classification column.
     """
     raw = norm(text)
     if not raw:

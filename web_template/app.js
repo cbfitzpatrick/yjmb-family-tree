@@ -73,7 +73,7 @@ function positionYearIconKinds(text) {
   if (!raw) return [];
   const out = [];
   const add = (kind) => { if (!out.includes(kind)) out.push(kind); };
-  const entries = raw.split(/[;|\n]+/).map((entry) => entry.trim()).filter(Boolean);
+  const entries = raw.split(/[;,|\n]+/).map((entry) => entry.trim()).filter(Boolean);
   for (const entry of entries) {
     let recognized = false;
     const tests = [
@@ -91,7 +91,7 @@ function positionYearIconKinds(text) {
     if (/\b(?:yellow\s+jacket\s+)?band\s+club\b|\byjbc\b/i.test(entry)) {
       add('band-club'); recognized = true;
     }
-    if (/\bhype[\s-]*(?:man|men|person|people|woman|women|guy|girl)\b|\bhypeman\b|\binformal(?:\s+leadership)?\b/i.test(entry)) {
+    if (/\bhype[\s-]*(?:man|men|person|people|woman|women|guy|girl)\b|\bhypeman\b|\bdoh[\s-]*meisters?\b|\binformal(?:\s+leadership)?\b/i.test(entry)) {
       add('informal-leadership'); recognized = true;
     }
     if (/\bstaff\s+(?:assistants?|ass(?:\.|\b))|\boperations?\b|\bops\b|\bprops?\b/i.test(entry)) {

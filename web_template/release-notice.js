@@ -1,7 +1,7 @@
 'use strict';
 
 (() => {
-  const RELEASE = 'v19.1.1';
+  const RELEASE = 'v19.1.2';
   const STORAGE_KEY = 'yjmbReleaseNoticeDismissedVersion';
   const SESSION_KEY = `yjmbReleaseNoticeSeen:${RELEASE}`;
   try {
@@ -11,6 +11,15 @@
   }
 
   const VERSION_SECTIONS = [
+    {
+      version: 'v19.1.2',
+      items: [
+        'Position and Year now treats commas as entry separators as well as semicolons, pipes, and line breaks.',
+        'Dohmeister is now explicitly classified as Informal Leadership instead of generic Other Leadership.',
+        'Mixed entries such as 2022-2023 Section Leader, 2024 Dohmeister, 2025 RAT Parent now produce all three card icons.',
+        'Protected site rebuilds now copy the complete web_template/icons folder instead of looking for obsolete root-level icon files.',
+      ],
+    },
     {
       version: 'v19.1.1',
       items: [
@@ -73,7 +82,7 @@
         </div>
         <div class="release-notice-actions">
           <button class="secondary-button" type="button" data-release-close>Continue</button>
-          <button class="primary-button" type="button" data-release-dismiss>Don’t show again for v19.1.1</button>
+          <button class="primary-button" type="button" data-release-dismiss>Don’t show again for v19.1.2</button>
         </div>
       </div>`;
     document.body.appendChild(dialog);

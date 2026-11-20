@@ -1,0 +1,11 @@
+YJMB Family Tree v19.1.2 hotfix
+
+Changes:
+- Parse comma-separated Position and Year entries.
+- Classify Dohmeister as Informal Leadership.
+- Preserve all recognized icons in mixed Position and Year strings.
+- Fix protected GitHub Pages rebuilds to copy web_template/icons into docs/icons.
+- Advance the release notice to v19.1.2.
+
+Overlay this patch on v19.1.1.
+No workbook, encrypted tree data, secrets, or Markdown files are included.
