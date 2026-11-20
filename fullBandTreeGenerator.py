@@ -2899,9 +2899,6 @@ def export_github_pages_site(
         "admin.js",
         "admin-mail.js",
         "release-notice.js",
-        "rat-parent-icon.png",
-        "section-leader-icon.png",
-        "band-club-icon.png",
         "site_config.json",
     )
     missing_templates = [template_dir / name for name in template_names if not (template_dir / name).exists()]
@@ -2917,6 +2914,30 @@ def export_github_pages_site(
         destination = site_dir / name
         shutil.copy2(source, destination)
         generated.append(destination)
+
+    # v19.1.2: role icons live in web_template/icons rather than the
+    # web_template root. Synchronize the complete icon folder into docs/icons
+    # whenever the protected site is regenerated.
+    icons_source = template_dir / "icons"
+    if not icons_source.is_dir():
+        raise TreeDataError(
+            f"GitHub Pages icon folder is missing from {template_dir}: icons. "
+            "Copy the complete web_template/icons folder beside "
+            "fullBandTreeGenerator.py."
+        )
+
+    icons_destination = site_dir / "icons"
+
+    if icons_destination.exists():
+        shutil.rmtree(icons_destination)
+
+    shutil.copytree(icons_source, icons_destination)
+
+    generated.extend(
+        icon_path
+        for icon_path in icons_destination.rglob("*")
+        if icon_path.is_file()
+    )
 
     nojekyll_path = site_dir / ".nojekyll"
     nojekyll_path.write_text("", encoding="utf-8")
