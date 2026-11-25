@@ -948,13 +948,12 @@ function renderDetails(person) {
   const submittedRats = Array.isArray(claims.rats) ? claims.rats : [];
   const fallbackClaim = (id, role) => {
     const related = state.people.get(id);
-    return { role, id, name: related?.name || id, reciprocated: true, status: 'Reciprocated / legacy relationship', tooltip: '' };
+    return { role, id, name: related?.name || id, reciprocated: true, status: 'Relationship', tooltip: '' };
   };
 
-  const addClaimButton = (row, claim, { showStatus = true } = {}) => {
+  const addClaimButton = (row, claim) => {
     const wrapper = document.createElement('span');
     wrapper.className = 'relationship-person-wrap';
-    if (claim.reciprocated === false) wrapper.classList.add('is-unreciprocated');
     let control;
     if (claim.id && state.people.has(claim.id)) {
       control = document.createElement('button');
@@ -967,17 +966,7 @@ function renderDetails(person) {
       control.className = 'person-link-button person-link-unavailable';
       control.textContent = claim.name || 'Unknown person';
     }
-    if (claim.reciprocated === false) {
-      control.classList.add('unreciprocated-person');
-      control.title = claim.tooltip || 'This relationship has not been reciprocated on the other profile.';
-    }
     wrapper.appendChild(control);
-    if (showStatus && claim.reciprocated === false) {
-      const badge = document.createElement('span');
-      badge.className = 'relationship-status-badge';
-      badge.textContent = 'Unreciprocated';
-      wrapper.appendChild(badge);
-    }
     row.appendChild(wrapper);
   };
 
@@ -996,30 +985,6 @@ function renderDetails(person) {
   const ratClaims = submittedRats.length ? submittedRats : (person.childrenIds || []).map((id) => fallbackClaim(id, 'RAT'));
   addRelationshipClaims('VET', vetClaims, 'None / root');
   addRelationshipClaims('RATs', ratClaims, 'None');
-
-  const unreciprocated = [...vetClaims, ...ratClaims].filter((claim) => claim.reciprocated === false);
-  if (unreciprocated.length) {
-    const pendingRow = document.createElement('div');
-    pendingRow.className = 'relationship-row unreciprocated-list';
-    const pendingLabel = document.createElement('strong');
-    pendingLabel.textContent = 'Unreciprocated connections';
-    pendingRow.appendChild(pendingLabel);
-    const help = document.createElement('p');
-    help.className = 'relationship-help';
-    help.textContent = 'These connections are present on one profile but have not been confirmed on the other profile.';
-    pendingRow.appendChild(help);
-    for (const claim of unreciprocated) {
-      const item = document.createElement('div');
-      item.className = 'unreciprocated-item';
-      const role = document.createElement('span');
-      role.className = 'relationship-role-label';
-      role.textContent = `${claim.role}:`;
-      item.appendChild(role);
-      addClaimButton(item, claim, { showStatus: false });
-      pendingRow.appendChild(item);
-    }
-    relationships.appendChild(pendingRow);
-  }
 
   q('#correction-link').href = `correction.html?person=${encodeURIComponent(person.id)}`;
   q('#details-show-tree').onclick = () => focusTreeForPerson(person.id);

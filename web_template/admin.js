@@ -643,7 +643,7 @@ async function requestAction(item, action) {
   } catch (error) { status(error.message, true); }
 }
 
-function unreciprocatedClaims() {
+function relationshipClaimsNeedingReview() {
   const claims = [];
   for (const person of state.data.people) {
     const own = person.relationshipClaims || {};
@@ -655,19 +655,19 @@ function unreciprocatedClaims() {
 
 function renderReciprocity() {
   const host = q('#admin-reciprocity-list'); host.replaceChildren();
-  const items = unreciprocatedClaims();
-  if (!items.length) { host.textContent = 'All resolved VET/RAT claims in this build are reciprocated.'; return; }
+  const items = relationshipClaimsNeedingReview();
+  if (!items.length) { host.textContent = 'No one-sided VET/RAT claims need administrator review.'; return; }
   for (const item of items) {
     const div = document.createElement('article'); div.className = 'admin-list-item';
     const target = item.claim.id ? state.people.get(item.claim.id) : null;
     div.innerHTML = `<h3>${htmlEscape(item.source.displayName || item.source.name)} → ${htmlEscape(item.role)}: ${htmlEscape(item.claim.name || item.claim.raw)}</h3><p>${htmlEscape(item.claim.raw || '')}</p>`;
     const actions = document.createElement('div'); actions.className = 'admin-item-actions';
     if (target) {
-      const validate = document.createElement('button'); validate.className = 'primary-button'; validate.textContent = 'Validate reciprocal side';
+      const validate = document.createElement('button'); validate.className = 'primary-button'; validate.textContent = 'Repair other side';
       validate.addEventListener('click', async () => {
         try {
           await adminApi('/admin/action', { method: 'POST', body: JSON.stringify({ payload: { kind: 'admin-reciprocate', sourceId: item.source.id, targetId: target.id, role: item.role } }) });
-          status('Reciprocal validation queued.');
+          status('Relationship repair queued.');
         } catch (error) { status(error.message, true); }
       });
       actions.appendChild(validate);
@@ -675,7 +675,7 @@ function renderReciprocity() {
       const edit = document.createElement('button'); edit.className = 'secondary-button'; edit.textContent = 'Open source profile';
       edit.addEventListener('click', () => { selectTab('tree'); openPersonEditor(item.source.id); });
       actions.appendChild(edit);
-      const note = document.createElement('span'); note.textContent = 'Referenced person is unresolved; identify/correct it before reciprocity can be validated.'; actions.appendChild(note);
+      const note = document.createElement('span'); note.textContent = 'Referenced person is unresolved; identify or correct it before the other side can be repaired.'; actions.appendChild(note);
     }
     div.appendChild(actions); host.appendChild(div);
   }

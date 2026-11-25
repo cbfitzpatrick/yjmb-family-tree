@@ -144,13 +144,35 @@
               </label>
             </div>
           </section>
+          <section class="question-block leadership-history-block">
+            <h3>Leadership and positions</h3>
+            <p class="field-help">Use the questionnaire for common marching-band positions, or type additional history in Position and Year below. Both inputs are combined into the same <strong>Position and Year</strong> workbook field, and card icons are derived from the combined result.</p>
+            <div id="leadership-entries" class="leadership-entry-list"></div>
+            <button id="add-leadership" class="secondary-button icon-button" type="button"><span aria-hidden="true">＋</span> Add marching-band position</button>
+          </section>
+
+          <section class="question-block band-club-leadership-block">
+            <h3>Band Club leadership</h3>
+            <fieldset class="choice-group compact-choice-group">
+              <legend>Have you held a Band Club leadership position?</legend>
+              <label><input type="radio" name="band-club-leadership" value="yes"> Yes</label>
+              <label><input type="radio" name="band-club-leadership" value="no"> No</label>
+            </fieldset>
+            <div id="band-club-leadership-details" hidden>
+              <p class="field-help">Add the Band Club title and optionally the year or year range. These entries are also stored only in Position and Year.</p>
+              <div id="band-club-leadership-entries" class="leadership-entry-list"></div>
+              <button id="add-band-club-leadership" class="secondary-button icon-button" type="button"><span aria-hidden="true">＋</span> Add Band Club position</button>
+            </div>
+          </section>
+
           <section class="question-block position-year-block">
             <h3>Position and Year</h3>
             <label class="form-field form-field-wide">
-              <span>Leadership/position title and year(s) <small>(optional)</small></span>
-              <textarea id="position-year" rows="3" placeholder="e.g., 2022 Section Leader; 2023 MCM; 2024 Band Club President"></textarea>
+              <span>Additional leadership/position title and year(s) <small>(optional)</small></span>
+              <textarea id="position-year" rows="3" placeholder="e.g., 2022 Section Leader; 2023 MCM; 2024 Dohmeister"></textarea>
             </label>
-            <p class="field-help">Use the existing Position and Year field for any marching-band, informal, or Band Club position. Card icons are determined automatically from the titles you enter; no separate leadership fields are required.</p>
+            <p class="field-help">You can paste or type titles directly here even if you also use the questionnaire. Separate entries with commas, semicolons, pipes, or line breaks. The questionnaire and this box are merged before submission.</p>
+            <p id="position-year-combined-preview" class="field-help position-year-combined-preview" aria-live="polite"></p>
           </section>
 
           <fieldset id="legacy-system-group" class="choice-group" hidden>
@@ -163,6 +185,7 @@
           <div id="relationship-questions" hidden>
             <section class="question-block">
               <h3>Who is your VET, what is their section, and what is their RAT year?</h3>
+              <p class="field-help relationship-format-help">Relationship records are stored as <strong>Name (RAT Year) (Section)</strong>, for example <strong>Wes Kline (2024) (Trumpet)</strong>. Use the match prompt when an existing person is found so the submission is not unnecessarily held for review.</p>
               <div class="relationship-entry vet-entry">
                 <label>
                   <span class="sr-only">VET Name</span>
@@ -184,7 +207,7 @@
               <div class="question-heading-row">
                 <div>
                   <h3>List all your RATs</h3>
-                  <p class="field-help">If you do not have a RAT, leave the row blank and continue.</p>
+                  <p class="field-help">If you do not have a RAT, leave the row blank and continue. Each completed relationship is stored as <strong>Name (RAT Year) (Section)</strong>. If the site finds an existing RAT, confirm the correct person before continuing.</p>
                 </div>
               </div>
               <div id="rat-rows" class="relationship-list"></div>

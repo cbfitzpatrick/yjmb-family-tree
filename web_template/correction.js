@@ -18,6 +18,37 @@ function normalizedFieldKey(label) {
   return String(label || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
 }
 
+function relationshipFieldRole(label) {
+  const key = normalizedFieldKey(label);
+  if (key === 'vet') return 'VET';
+  if (/^rat\d+$/.test(key)) return 'RAT';
+  return '';
+}
+
+function parseRelationshipText(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  const match = raw.match(/^(.+?)\s+\((\d{4})\)\s+\(([^()]+)\)\s*$/);
+  if (!match) return null;
+  const name = match[1].trim();
+  const year = Number(match[2]);
+  const section = match[3].trim();
+  if (!name || name.length < 2 || !Number.isInteger(year) || year < 1908 || year > new Date().getFullYear() + 1 || !section) return null;
+  return { name, year, section };
+}
+
+function validateRelationshipChanges(changes) {
+  for (const change of changes) {
+    const role = relationshipFieldRole(change.label);
+    const value = String(change.after || '').trim();
+    if (!role || !value) continue;
+    if (!parseRelationshipText(value)) {
+      return `${change.label} must use exactly Name (RAT Year) (Section), for example Wes Kline (2024) (Trumpet). This prevents an avoidable protected-review hold.`;
+    }
+  }
+  return '';
+}
+
 function fieldId(label, index) {
   return `field-${index}-${String(label).toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
 }
@@ -93,6 +124,12 @@ function renderFields() {
     input.value = field.value ?? '';
     originalValues.set(field.label, String(field.value ?? ''));
     wrapper.append(title, input);
+    if (relationshipFieldRole(field.label)) {
+      const help = document.createElement('span');
+      help.className = 'field-help relationship-format-help';
+      help.textContent = 'Required format: Name (RAT Year) (Section), e.g. Wes Kline (2024) (Trumpet).';
+      wrapper.appendChild(help);
+    }
     container.appendChild(wrapper);
   });
 }
@@ -206,6 +243,12 @@ q('#correction-form').addEventListener('submit', async (event) => {
     q('#correction-status').textContent = context
       ? 'Context alone does not change the workbook. Edit at least one field.'
       : 'Change at least one field before submitting.';
+    return;
+  }
+  const relationshipError = validateRelationshipChanges(changes);
+  if (relationshipError) {
+    q('#correction-status').hidden = false;
+    q('#correction-status').textContent = relationshipError;
     return;
   }
   q('#correction-status').hidden = true;

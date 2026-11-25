@@ -1,7 +1,7 @@
 'use strict';
 
 (() => {
-  const RELEASE = 'v19.1.3';
+  const RELEASE = 'v19.1.4';
   const STORAGE_KEY = 'yjmbReleaseNoticeDismissedVersion';
   const SESSION_KEY = `yjmbReleaseNoticeSeen:${RELEASE}`;
   try {
@@ -11,6 +11,17 @@
   }
 
   const VERSION_SECTIONS = [
+    {
+      version: 'v19.1.4',
+      items: [
+        'Add Yourself now combines a structured leadership questionnaire with the free-text Position and Year field; both feed the same workbook field and card-icon parser.',
+        'Existing VET/RAT matches must be explicitly confirmed or rejected before submission, preventing avoidable protected-review holds.',
+        'Correction blocks malformed VET/RAT edits unless they use Name (RAT Year) (Section).',
+        'Existing-person RAT matching now uses robust name/year/section labels instead of placeholder ?? values when better profile data is available.',
+        'One-sided relationship status is no longer shown to normal visitors; administrators retain an Admin-only Relationship Review view.',
+        'Protected Pages deployment can be hardened with the included retry patch for the transient github-pages artifact handoff failure seen in run 45483045980.',
+      ],
+    },
     {
       version: 'v19.1.3',
       items: [
@@ -91,7 +102,7 @@
         </div>
         <div class="release-notice-actions">
           <button class="secondary-button" type="button" data-release-close>Continue</button>
-          <button class="primary-button" type="button" data-release-dismiss>Don’t show again for v19.1.3</button>
+          <button class="primary-button" type="button" data-release-dismiss>Don’t show again for v19.1.4</button>
         </div>
       </div>`;
     document.body.appendChild(dialog);

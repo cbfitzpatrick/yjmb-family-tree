@@ -484,7 +484,7 @@ async function adminAction(request, env, common) {
   const body = await request.json().catch(() => ({}));
   const payload = body.payload;
   const kind = String(payload?.kind || '');
-  const allowed = new Set(['admin-patch', 'admin-add', 'admin-delete', 'admin-reciprocate', 'admin-revert']);
+  const allowed = new Set(['admin-patch', 'admin-add', 'admin-delete', 'admin-reciprocate', 'admin-revert', 'admin-leadership-taxonomy']);
   if (!payload || typeof payload !== 'object' || !allowed.has(kind)) return json({ error: 'Invalid administrator action.' }, 400, common);
   if (JSON.stringify(payload).length > 120000) return json({ error: 'Administrator action is too large.' }, 400, common);
   const id = crypto.randomUUID();

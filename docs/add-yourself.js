@@ -336,6 +336,379 @@ function treeCardName() {
   return [treeCardGivenName(), treeCardFamilyName()].filter(Boolean).join(' ');
 }
 
+const FORMAL_LEADERSHIP_OPTIONS = [
+  'Drum Major',
+  'Section Leader',
+  'Guard Captain',
+  'Staff Assistant',
+  'Operations',
+  'Props',
+  'Uniforms',
+  'Libraries',
+  'MCM',
+  'RAT Parent',
+  'Other',
+];
+const FORMAL_LEADERSHIP_LABELS = {
+  'Staff Assistant': 'Staff Assistant (Staff Ass)',
+  'Operations': 'Operations (Ops)',
+  'RAT Parent': 'RAT Parent (RAT Mom / RAT Dad)',
+};
+
+function positionYearEntryText(title, years = '') {
+  const cleanTitle = String(title || '').trim();
+  const cleanYears = String(years || '').trim();
+  if (!cleanTitle) return '';
+  return cleanYears ? `${cleanYears} ${cleanTitle}` : cleanTitle;
+}
+
+function addLeadershipEntry(initial = {}) {
+  const container = q('#leadership-entries');
+  if (!container) return;
+  const row = document.createElement('div');
+  row.className = 'leadership-entry-row';
+
+  const typeField = document.createElement('label');
+  typeField.className = 'form-field';
+  typeField.innerHTML = '<span>Type</span>';
+  const type = document.createElement('select');
+  type.className = 'leadership-type';
+  type.innerHTML = '<option value="formal">Formal</option><option value="informal">Informal</option>';
+  type.value = initial.type || 'formal';
+  typeField.appendChild(type);
+
+  const roleField = document.createElement('label');
+  roleField.className = 'form-field leadership-role-field';
+  const roleLabel = document.createElement('span');
+  roleLabel.textContent = 'Position';
+  const formal = document.createElement('select');
+  formal.className = 'leadership-formal-role';
+  for (const role of FORMAL_LEADERSHIP_OPTIONS) {
+    const option = document.createElement('option');
+    option.value = role;
+    option.textContent = FORMAL_LEADERSHIP_LABELS[role] || role;
+    formal.appendChild(option);
+  }
+  formal.value = FORMAL_LEADERSHIP_OPTIONS.includes(initial.role)
+    ? initial.role
+    : (initial.type === 'formal' && initial.role ? 'Other' : 'Drum Major');
+
+  const freeText = document.createElement('input');
+  freeText.className = 'leadership-free-role';
+  freeText.type = 'text';
+  freeText.placeholder = 'Position';
+  freeText.value = initial.type === 'informal' || formal.value === 'Other' ? (initial.role || '') : '';
+  roleField.append(roleLabel, formal, freeText);
+
+  const yearsField = document.createElement('label');
+  yearsField.className = 'form-field';
+  yearsField.innerHTML = '<span>Year(s) (optional)</span>';
+  const years = document.createElement('input');
+  years.className = 'leadership-years';
+  years.type = 'text';
+  years.placeholder = 'e.g., 2021 or 2021–2022';
+  years.value = initial.years || '';
+  yearsField.appendChild(years);
+
+  const remove = document.createElement('button');
+  remove.type = 'button';
+  remove.className = 'remove-row-button';
+  remove.setAttribute('aria-label', 'Remove this leadership position');
+  remove.textContent = '×';
+  remove.addEventListener('click', () => {
+    row.remove();
+    updateCombinedPositionYearPreview();
+  });
+
+  function refresh() {
+    const informal = type.value === 'informal';
+    formal.hidden = informal;
+    freeText.hidden = !informal && formal.value !== 'Other';
+    roleLabel.textContent = informal ? 'Informal position' : 'Formal position';
+    freeText.placeholder = informal
+      ? 'e.g., Dohmeister, Hype Man, mentor'
+      : 'Other formal position';
+    updateCombinedPositionYearPreview();
+  }
+  type.addEventListener('change', refresh);
+  formal.addEventListener('change', refresh);
+  freeText.addEventListener('input', updateCombinedPositionYearPreview);
+  years.addEventListener('input', updateCombinedPositionYearPreview);
+  refresh();
+
+  row.append(typeField, roleField, yearsField, remove);
+  container.appendChild(row);
+  updateCombinedPositionYearPreview();
+}
+
+function readLeadershipHistory() {
+  const container = q('#leadership-entries');
+  if (!container) return [];
+  return qa('.leadership-entry-row', container).map((row) => {
+    const type = q('.leadership-type', row).value;
+    const formal = q('.leadership-formal-role', row).value;
+    const free = q('.leadership-free-role', row).value.trim();
+    const role = type === 'informal' ? free : (formal === 'Other' ? free : formal);
+    return { type, role, years: q('.leadership-years', row).value.trim() };
+  }).filter((entry) => entry.role);
+}
+
+function updateBandClubLeadershipVisibility() {
+  const details = q('#band-club-leadership-details');
+  if (!details) return;
+  const yes = radioValue('band-club-leadership') === 'yes';
+  details.hidden = !yes;
+  if (yes && !q('#band-club-leadership-entries').children.length) addBandClubLeadershipEntry();
+  if (!yes) q('#band-club-leadership-entries').replaceChildren();
+  updateCombinedPositionYearPreview();
+}
+
+function addBandClubLeadershipEntry(initial = {}) {
+  const container = q('#band-club-leadership-entries');
+  if (!container) return;
+  const row = document.createElement('div');
+  row.className = 'band-club-entry-row';
+
+  const positionField = document.createElement('label');
+  positionField.className = 'form-field';
+  positionField.innerHTML = '<span>Band Club position</span>';
+  const position = document.createElement('input');
+  position.className = 'band-club-position';
+  position.type = 'text';
+  position.placeholder = 'e.g., President, Treasurer, Social Chair';
+  position.value = initial.position || '';
+  positionField.appendChild(position);
+
+  const yearsField = document.createElement('label');
+  yearsField.className = 'form-field';
+  yearsField.innerHTML = '<span>Year(s) (optional)</span>';
+  const years = document.createElement('input');
+  years.className = 'band-club-years';
+  years.type = 'text';
+  years.placeholder = 'e.g., 2022–2023';
+  years.value = initial.years || '';
+  yearsField.appendChild(years);
+
+  const remove = document.createElement('button');
+  remove.type = 'button';
+  remove.className = 'remove-row-button';
+  remove.setAttribute('aria-label', 'Remove this Band Club position');
+  remove.textContent = '×';
+  remove.addEventListener('click', () => {
+    row.remove();
+    updateCombinedPositionYearPreview();
+  });
+  position.addEventListener('input', updateCombinedPositionYearPreview);
+  years.addEventListener('input', updateCombinedPositionYearPreview);
+  row.append(positionField, yearsField, remove);
+  container.appendChild(row);
+  updateCombinedPositionYearPreview();
+}
+
+function readBandClubLeadershipHistory() {
+  const container = q('#band-club-leadership-entries');
+  if (!container || radioValue('band-club-leadership') !== 'yes') return [];
+  return qa('.band-club-entry-row', container).map((row) => ({
+    position: q('.band-club-position', row).value.trim(),
+    years: q('.band-club-years', row).value.trim(),
+  })).filter((entry) => entry.position);
+}
+
+function structuredPositionYearEntries() {
+  const entries = [];
+  for (const entry of readLeadershipHistory()) {
+    let title = entry.role;
+    if (entry.type === 'informal' && !/\binformal(?:\s+leadership)?\b/i.test(title)) {
+      title = `Informal Leadership: ${title}`;
+    }
+    const rendered = positionYearEntryText(title, entry.years);
+    if (rendered) entries.push(rendered);
+  }
+  for (const entry of readBandClubLeadershipHistory()) {
+    let title = entry.position;
+    if (!/\bband\s+club\b|\byjbc\b/i.test(title)) title = `Band Club ${title}`;
+    const rendered = positionYearEntryText(title, entry.years);
+    if (rendered) entries.push(rendered);
+  }
+  return entries;
+}
+
+function splitPositionYearEntries(value) {
+  return String(value || '').split(/[;,|\n]+/).map((entry) => entry.trim()).filter(Boolean);
+}
+
+function combinedPositionYear() {
+  const entries = [...structuredPositionYearEntries(), ...splitPositionYearEntries(q('#position-year')?.value)];
+  const seen = new Set();
+  return entries.filter((entry) => {
+    const key = normalize(entry);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).join('; ');
+}
+
+function updateCombinedPositionYearPreview() {
+  const preview = q('#position-year-combined-preview');
+  if (!preview) return;
+  const value = combinedPositionYear();
+  preview.textContent = value
+    ? `Combined Position and Year: ${value}`
+    : 'No leadership or position history entered yet.';
+}
+
+const PREVIEW_ROLE_ICON_ASSETS = Object.freeze({
+  'section-leader': 'icons/section-leader-icon.png',
+  'guard-captain': 'icons/guard-captain-icon.png',
+  'drum-major': 'icons/drum-major-icon.png',
+  'rat-parent': 'icons/rat-parent-icon.png',
+  'mcm': 'icons/mcm-icon.png',
+  'libraries': 'icons/libraries-icon.png',
+  'uniforms': 'icons/uniforms-icon.png',
+  'informal-leadership': 'icons/informal-leadership-icon.png',
+  'other-leadership': 'icons/other-leadership-icon.png',
+  'band-club': 'icons/band-club-icon.png',
+});
+
+function leadershipTitleKey(value) {
+  return normalize(value).replace(/[^a-z0-9]+/g, '');
+}
+
+function previewPositionTitle(entry) {
+  return String(entry || '')
+    .replace(/\b(?:spring|summer|fall|autumn|winter)?\s*(?:19|20)\d{2}(?:\s*(?:-|–|—|to|through|thru)\s*(?:19|20)?\d{2})?\b/gi, ' ')
+    .replace(/^[\s\-–—:;,|/]+|[\s\-–—:;,|/]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function taxonomyCategoryForPreviewTitle(title) {
+  const key = leadershipTitleKey(title);
+  const direct = (state.data?.leadershipTaxonomy || []).find((item) =>
+    leadershipTitleKey(item?.key || item?.title) === key
+  );
+  if (direct?.category) return String(direct.category);
+  const indexed = (state.data?.leadershipTitleIndex || []).find((item) =>
+    leadershipTitleKey(item?.key || item?.title) === key
+  );
+  return String(indexed?.overrideCategory || '');
+}
+
+function previewPositionYearIconKinds(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return [];
+  const out = [];
+  const add = (kind) => { if (kind && kind !== 'none' && !out.includes(kind)) out.push(kind); };
+  const entries = raw.split(/[;,|\n]+/).map((entry) => entry.trim()).filter(Boolean);
+  for (const entry of entries) {
+    const title = previewPositionTitle(entry) || entry;
+    const override = taxonomyCategoryForPreviewTitle(title);
+    if (override) {
+      add(override);
+      continue;
+    }
+    let recognized = false;
+    const tests = [
+      [/\bsection\s+leaders?\b/i, 'section-leader'],
+      [/\b(?:color\s+guard\s+)?guard\s+captains?\b|\bcolor\s+guard\s+captains?\b/i, 'guard-captain'],
+      [/\bdrum\s+majors?\b/i, 'drum-major'],
+      [/\brat\s+(?:parents?|moms?|dads?)\b/i, 'rat-parent'],
+      [/\bmcm\b/i, 'mcm'],
+      [/\blibraries?\b|\blibrary\b/i, 'libraries'],
+      [/\buniforms?\b/i, 'uniforms'],
+    ];
+    for (const [pattern, kind] of tests) {
+      if (pattern.test(entry)) { add(kind); recognized = true; }
+    }
+    if (/\b(?:yellow\s+jacket\s+)?band\s+club\b|\byjbc\b/i.test(entry)) {
+      add('band-club'); recognized = true;
+    }
+    if (/\bhype[\s-]*(?:man|men|person|people|woman|women|guy|girl)\b|\bhypeman\b|\bdoh[\s-]*meisters?\b|\binformal(?:\s+leadership)?\b/i.test(entry)) {
+      add('informal-leadership'); recognized = true;
+    }
+    if (/\bstaff\s+(?:assistants?|ass(?:\.|\b))|\boperations?\b|\bops\b|\bprops?\b/i.test(entry)) {
+      add('other-leadership'); recognized = true;
+    }
+    if (!recognized) {
+      const residual = title
+        .replace(/\b(?:position|positions|year|years|marching\s+band|leadership|served\s+as|serve(?:d)?\s+as)\b/gi, ' ')
+        .replace(/[()\[\]{},:/+_-]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (/[A-Za-z]/.test(residual)) add('other-leadership');
+    }
+  }
+  return out;
+}
+
+function createPreviewRoleIcon(kind) {
+  const asset = PREVIEW_ROLE_ICON_ASSETS[kind];
+  if (!asset) return null;
+  const wrapper = document.createElement('span');
+  wrapper.className = `card-status-icon card-role-icon icon-${kind}`;
+  wrapper.dataset.iconKind = kind;
+  wrapper.title = kind.replaceAll('-', ' ');
+  const img = document.createElement('img');
+  img.src = asset;
+  img.alt = '';
+  img.decoding = 'async';
+  wrapper.appendChild(img);
+  return wrapper;
+}
+
+function assignPreviewIconSlots(elements) {
+  const candidates = elements.filter(Boolean);
+  const shown = new Set();
+  const drumMajor = candidates.find((el) => el.dataset.iconKind === 'drum-major');
+  const sectionLeader = candidates.find((el) => el.dataset.iconKind === 'guard-captain')
+    || candidates.find((el) => el.dataset.iconKind === 'section-leader');
+  const place = (el, slot) => {
+    if (!el || shown.size >= 4) return;
+    el.dataset.roleSlot = slot;
+    shown.add(el);
+  };
+  place(drumMajor, 'tl');
+  place(sectionLeader, 'tr');
+  const reservedKinds = new Set(['drum-major', 'section-leader', 'guard-captain']);
+  const overflow = candidates.filter((el) => !reservedKinds.has(el.dataset.iconKind));
+  const slots = ['bl', 'br'];
+  if (!drumMajor) slots.push('tl');
+  if (!sectionLeader) slots.push('tr');
+  for (const el of overflow) {
+    const slot = slots.shift();
+    if (!slot || shown.size >= 4) break;
+    place(el, slot);
+  }
+  return candidates.filter((el) => shown.has(el));
+}
+
+function validateLeadershipQuestionnaire() {
+  const rows = qa('.leadership-entry-row', q('#leadership-entries'));
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = rows[index];
+    const type = q('.leadership-type', row).value;
+    const formal = q('.leadership-formal-role', row).value;
+    const free = q('.leadership-free-role', row).value.trim();
+    if ((type === 'informal' || formal === 'Other') && !free) {
+      showStatus(`Leadership row ${index + 1} needs a position name, or remove that row.`);
+      row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      return false;
+    }
+  }
+  const clubAnswer = radioValue('band-club-leadership');
+  if (!clubAnswer) {
+    showStatus('Please answer whether you have held a Band Club leadership position.');
+    q('.band-club-leadership-block')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    return false;
+  }
+  if (clubAnswer === 'yes' && !readBandClubLeadershipHistory().length) {
+    showStatus('Add at least one Band Club leadership position, or choose No.');
+    q('#band-club-leadership-details')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    return false;
+  }
+  return true;
+}
+
 function updateOtherGtEnsembleVisibility() {
   const hasOtherEnsembles = radioValue('other-gt-ensembles') === 'yes';
   q('#other-gt-ensemble-details').hidden = !hasOtherEnsembles;
@@ -418,6 +791,91 @@ function personSectionMatches(person, section) {
   return (person.instruments || []).includes(section);
 }
 
+function usefulPersonText(value) {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  if (/^(?:\?+|unknown(?:\s+person)?|n\/a)$/i.test(text)) return '';
+  return text;
+}
+
+function relationshipCandidateCanonicalName(person) {
+  const source = person?.sourceFields || {};
+  const fromFields = [
+    usefulPersonText(person?.givenPreferredName || source['Given/Preferred Name']),
+    usefulPersonText(person?.familyMaidenName || source['Family/Maiden Name'] || source['Family/Last Name']),
+  ].filter(Boolean).join(' ').trim();
+  if (fromFields) return fromFields;
+  for (const value of [person?.currentName, person?.displayName, person?.name]) {
+    const text = usefulPersonText(value);
+    if (text) return text;
+  }
+  return 'Unknown person';
+}
+
+function relationshipCandidateDisplayName(person) {
+  for (const value of [person?.displayName, person?.currentName, relationshipCandidateCanonicalName(person), person?.name]) {
+    const text = usefulPersonText(value);
+    if (text) return text;
+  }
+  return 'Unknown person';
+}
+
+function relationshipCandidateYearLabel(person) {
+  const label = usefulPersonText(person?.ratYearLabel);
+  if (label && !/^unknown\s+year$/i.test(label)) return label;
+  const sourceYear = person?.sourceFields?.['RAT Year'];
+  const year = Number(person?.ratYear || sourceYear);
+  return Number.isInteger(year) && year >= 1908 ? String(year) : 'Unknown year';
+}
+
+function relationshipCandidateSectionText(person) {
+  const raw = usefulPersonText(person?.instrumentRaw || person?.sourceFields?.Instrument);
+  if (raw && !/^unknown(?:\s+section)?$/i.test(raw)) return raw;
+  const first = Array.isArray(person?.instruments) ? person.instruments.find(Boolean) : '';
+  return first ? sectionLabel(first) : 'Unknown section';
+}
+
+function relationshipCandidateLabel(person) {
+  return `${relationshipCandidateDisplayName(person)} (${relationshipCandidateYearLabel(person)}) (${relationshipCandidateSectionText(person)})`;
+}
+
+function personNameAliases(person) {
+  return [...new Set([
+    person?.name,
+    person?.displayName,
+    person?.currentName,
+    relationshipCandidateCanonicalName(person),
+    [person?.givenPreferredName, person?.familyMaidenName].filter(Boolean).join(' '),
+  ].map(usefulPersonText).filter(Boolean).map(normalize))];
+}
+
+function exactRelationshipCandidates(entry) {
+  if (!entry?.name || !entry?.year) return [];
+  const wanted = normalize(entry.name);
+  const year = Number(entry.year);
+  return (state.data?.people || []).filter((person) =>
+    Number(person.ratYear) === year && personNameAliases(person).includes(wanted)
+  );
+}
+
+function validateRelationshipIdentityConfirmation(entry, label, panel) {
+  if (!entry?.name || !entry?.year || entry.matchedId) return true;
+  const exact = exactRelationshipCandidates(entry);
+  if (!exact.length) return true;
+  const rejected = new Set((entry.rejectedIds || []).map(String));
+  const unresolved = exact.filter((person) => !rejected.has(String(person.id)));
+  if (!unresolved.length) return true;
+  showStatus(
+    `${label} matches an existing name/RAT year, but identity wasn't confirmed. ` +
+    'Please confirm the correct person in the match prompt, or choose “No” for every listed match before continuing.'
+  );
+  if (panel) {
+    panel.hidden = false;
+    panel.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }
+  return false;
+}
+
 function editDistance(a, b) {
   const x = normalize(a);
   const y = normalize(b);
@@ -440,7 +898,7 @@ function editDistance(a, b) {
 
 function vetCandidateScore(person, enteredName, section, year) {
   const entered = normalize(enteredName);
-  const name = normalize(person.name);
+  const name = normalize(relationshipCandidateCanonicalName(person));
   if (!entered || entered.length < 3) return -Infinity;
   let score = 0;
   if (name === entered) score += 110;
@@ -466,7 +924,7 @@ function bestRelationshipCandidate(enteredName, section, year, rejectedIds = new
     .filter((person) => !rejectedIds.has(person.id))
     .map((person) => ({ person, score: vetCandidateScore(person, enteredName, section, year) }))
     .filter((entry) => entry.score >= 62)
-    .sort((a, b) => b.score - a.score || a.person.name.localeCompare(b.person.name));
+    .sort((a, b) => b.score - a.score || relationshipCandidateDisplayName(a.person).localeCompare(relationshipCandidateDisplayName(b.person)));
   if (!ranked.length) return null;
   if (requireClearWinner && ranked[1] && ranked[0].score - ranked[1].score < 4 && ranked[0].score < 100) return null;
   return ranked[0].person;
@@ -502,7 +960,7 @@ function updateVetMatch() {
 
   const panel = q('#vet-match-panel');
   const prompt = document.createElement('p');
-  prompt.textContent = `I think I found your VET in our system. Is your VET ${candidate.name} (${candidate.ratYearLabel}, ${candidate.instrumentRaw || 'Unknown section'})?`;
+  prompt.textContent = `I think I found your VET in our system. Is your VET ${relationshipCandidateLabel(candidate)}?`;
   const actions = document.createElement('div');
   actions.className = 'inline-actions';
   const yes = document.createElement('button');
@@ -512,14 +970,14 @@ function updateVetMatch() {
   yes.addEventListener('click', () => {
     state.vetMatch = candidate;
     state.vetRejectedIds.clear();
-    q('#vet-name').value = candidate.name;
+    q('#vet-name').value = relationshipCandidateCanonicalName(candidate);
     q('#vet-section').value = (candidate.instruments || [])[0] || q('#vet-section').value;
     if (candidate.ratYear) q('#vet-year').value = String(candidate.ratYear);
     state.vetFingerprint = `${normalize(q('#vet-name').value)}|${q('#vet-section').value}|${q('#vet-year').value}`;
     panel.classList.add('match-confirmed');
     panel.replaceChildren();
     const confirmed = document.createElement('p');
-    confirmed.innerHTML = `<strong>Matched:</strong> ${escapeHtml(candidate.name)} (${escapeHtml(candidate.ratYearLabel)})`;
+    confirmed.innerHTML = `<strong>Matched:</strong> ${escapeHtml(relationshipCandidateLabel(candidate))}`;
     const undo = document.createElement('button');
     undo.type = 'button';
     undo.className = 'secondary-button small-button';
@@ -554,7 +1012,7 @@ function matchingSelfProfiles(name = fullSubmittedName(), year = q('#self-rat-ye
   if (!normalizedName || !year || !state.data?.people) return [];
   const section = primarySection();
   return state.data.people.filter((person) =>
-    normalize(person.name) === normalizedName && Number(person.ratYear) === Number(year)
+    personNameAliases(person).includes(normalizedName) && Number(person.ratYear) === Number(year)
   ).sort((a, b) => Number(personSectionMatches(b, section)) - Number(personSectionMatches(a, section))
     || String(a.id).localeCompare(String(b.id)));
 }
@@ -594,7 +1052,7 @@ function updateExistingSelfWarning() {
     const confirmed = candidates.find((p) => p.id === state.selfMatchedPersonId);
     if (confirmed) {
       const message = document.createElement('p');
-      message.textContent = `Yes — merge into ${confirmed.name} (${confirmed.ratYearLabel}, ${confirmed.instrumentRaw || 'Unknown section'}).`;
+      message.textContent = `Yes — merge into ${relationshipCandidateLabel(confirmed)}.`;
       const restart = document.createElement('button');
       restart.type = 'button'; restart.className = 'secondary-button small-button';
       restart.textContent = 'Change my answer';
@@ -633,7 +1091,7 @@ function updateExistingSelfWarning() {
   const card = document.createElement('div');
   card.className = 'identity-candidate';
   const title = document.createElement('strong');
-  title.textContent = `${person.name} — ${person.ratYearLabel}`;
+  title.textContent = `${relationshipCandidateDisplayName(person)} — ${relationshipCandidateYearLabel(person)}`;
   card.appendChild(title);
   const details = document.createElement('dl');
   const fields = Array.isArray(person.sourceFields) && person.sourceFields.length
@@ -740,7 +1198,7 @@ function addRatRow(initial = {}) {
     matchPanel.classList.add('match-confirmed');
     matchPanel.replaceChildren();
     const confirmed = document.createElement('p');
-    confirmed.innerHTML = `<strong>Matched RAT:</strong> ${escapeHtml(candidate.name)} (${escapeHtml(candidate.ratYearLabel)}, ${escapeHtml(candidate.instrumentRaw || 'Unknown section')})`;
+    confirmed.innerHTML = `<strong>Matched RAT:</strong> ${escapeHtml(relationshipCandidateLabel(candidate))}`;
     const undo = document.createElement('button');
     undo.type = 'button';
     undo.className = 'secondary-button small-button';
@@ -773,7 +1231,7 @@ function addRatRow(initial = {}) {
     if (!candidate) return;
 
     const prompt = document.createElement('p');
-    prompt.textContent = `I think I found your RAT in our system. Is your RAT ${candidate.name} (${candidate.ratYearLabel}, ${candidate.instrumentRaw || 'Unknown section'})?`;
+    prompt.textContent = `I think I found your RAT in our system. Is your RAT ${relationshipCandidateLabel(candidate)}?`;
     const actions = document.createElement('div');
     actions.className = 'inline-actions';
 
@@ -783,7 +1241,7 @@ function addRatRow(initial = {}) {
     yes.textContent = 'Yes';
     yes.addEventListener('click', () => {
       row._suppressRatMatchUpdate = true;
-      name.value = candidate.name;
+      name.value = relationshipCandidateCanonicalName(candidate);
       section.value = (candidate.instruments || [])[0] || section.value;
       if (candidate.ratYear) year.value = String(candidate.ratYear);
       row._ratFingerprint = `${normalize(name.value)}|${section.value}|${year.value}`;
@@ -965,6 +1423,7 @@ function validateStep2() {
       return false;
     }
   }
+  if (!validateLeadershipQuestionnaire()) return false;
   if (year < 1990 && !radioValue('legacy-system')) {
     showStatus('Please answer whether the RAT/VET pair system applied while you were in band.');
     return false;
@@ -973,10 +1432,20 @@ function validateStep2() {
 
   const vet = readVet();
   if (!validateRelationshipRow(vet, 'Your VET')) return false;
+  if (!validateRelationshipIdentityConfirmation(vet, 'Your VET', q('#vet-match-panel'))) return false;
   if (radioValue('currently-rat') === 'no') {
     const rats = readRats();
+    const ratRows = qa('.rat-entry', q('#rat-rows')).filter((row) => {
+      return Boolean(
+        q('.rat-name', row).value.trim()
+        || q('.rat-section', row).value
+        || q('.rat-year', row).value
+      );
+    });
     for (let index = 0; index < rats.length; index += 1) {
       if (!validateRelationshipRow(rats[index], `RAT row ${index + 1}`, { optional: true })) return false;
+      const panel = ratRows[index] ? q('.rat-match-panel', ratRows[index]) : null;
+      if (!validateRelationshipIdentityConfirmation(rats[index], `RAT row ${index + 1}`, panel)) return false;
     }
   }
   return true;
@@ -1009,7 +1478,7 @@ function proposedSubmission() {
     if (checkbox.checked && textarea.value.trim()) notes[target.dataset.targetKey] = textarea.value.trim();
   }
   return {
-    version: 6,
+    version: 7,
     submittedAt: new Date().toISOString(),
     identityDecision: state.selfIdentityDecision || (matchingSelfProfiles().length ? 'unresolved' : 'create'),
     differentPersonIds: [...state.selfDifferentPersonIds],
@@ -1032,7 +1501,7 @@ function proposedSubmission() {
       otherGtEnsemblesList: radioValue('other-gt-ensembles') === 'yes' ? q('#other-gt-ensembles-list').value.trim() : '',
       playedDifferentGtInstrument: radioValue('other-gt-ensembles') === 'yes' && radioValue('different-gt-instrument') === 'yes',
       otherGtInstruments: radioValue('other-gt-ensembles') === 'yes' && radioValue('different-gt-instrument') === 'yes' ? q('#other-gt-instruments').value.trim() : '',
-      positionYear: q('#position-year').value.trim(),
+      positionYear: combinedPositionYear(),
     },
     pairSystem: {
       applies: usePairSystem,
@@ -1398,9 +1867,14 @@ function renderPreview() {
     const name = document.createElement('span');
     name.textContent = node.sourcePerson?.displayName || node.name;
     card.appendChild(name);
-    // Card status/leadership icons are intentionally disabled for now.
-    // The main tree bundle still carries the future role flags/assets so they
-    // can be enabled later without changing workbook data.
+
+    const iconKinds = Array.isArray(node.sourcePerson?.leadershipIcons)
+      ? [...node.sourcePerson.leadershipIcons]
+      : previewPositionYearIconKinds(node.positionAndYear || '');
+    if (node.sourcePerson?.bandClubLeadership && !iconKinds.includes('band-club')) iconKinds.push('band-club');
+    const roleIcons = assignPreviewIconSlots(iconKinds.map(createPreviewRoleIcon).filter(Boolean));
+    for (const icon of roleIcons) card.appendChild(icon);
+
     stage.appendChild(card);
   }
 
@@ -1418,7 +1892,7 @@ function renderPreview() {
   const duplicate = exactExistingPerson();
   const warning = q('#preview-warning');
   if (duplicate) {
-    warning.innerHTML = `A record for <strong>${escapeHtml(duplicate.name)}</strong> (${escapeHtml(duplicate.ratYearLabel)}) already exists. This preview represents information that will be merged into the existing profile rather than creating a duplicate card.`;
+    warning.innerHTML = `A record for <strong>${escapeHtml(relationshipCandidateDisplayName(duplicate))}</strong> (${escapeHtml(relationshipCandidateYearLabel(duplicate))}) already exists. This preview represents information that will be merged into the existing profile rather than creating a duplicate card.`;
     warning.hidden = false;
   } else {
     if (state.selfIdentityDecision === 'create' && matchingSelfProfiles().length) {
@@ -1451,8 +1925,8 @@ function summaryRow(label, value) {
 function renderSubmissionSummary() {
   const data = proposedSubmission();
   const container = q('#submission-summary');
-  const rats = data.rats.map((rat) => `${rat.name} (${rat.year}, ${sectionLabel(rat.section)})`).join('; ') || 'None';
-  const vet = data.vet ? `${data.vet.name} (${data.vet.year}, ${sectionLabel(data.vet.section)})` : 'Not applicable';
+  const rats = data.rats.map((rat) => `${rat.name} (${rat.year}) (${sectionLabel(rat.section)})`).join('; ') || 'None';
+  const vet = data.vet ? `${data.vet.name} (${data.vet.year}) (${sectionLabel(data.vet.section)})` : 'Not applicable';
   const notesCount = Object.keys(data.notes).length;
   container.innerHTML = [
     summaryRow('Name', `${data.self.givenPreferredName} ${data.self.familyMaidenName}`),
@@ -1478,7 +1952,7 @@ function renderSubmissionSummary() {
     summaryRow('Favorite Tech Band Memory', data.favoriteTechBandMemory || 'No memory entered'),
   ].join('');
 
-  q('#submission-github-note').innerHTML = 'Your authenticated submission is placed in the protected update queue after required-field and abuse checks. <strong>Existing profiles are merged only after you explicitly identify the correct person. If you are someone else, a separate profile can be created.</strong> New VETs/RATs that do not exist yet can be created automatically. Every applied change is recorded in the protected admin changelog. Changes may take a few minutes to appear on the live tree.';
+  q('#submission-github-note').innerHTML = 'Your authenticated submission is placed in the protected update queue after required-field and abuse checks. <strong>Existing people must be explicitly confirmed when the site finds a matching VET/RAT identity.</strong> Confirmed VET/RAT relationships are mirrored automatically, and missing related people can be created when safe. Every applied change is recorded in the protected admin changelog. Changes may take a few minutes to appear on the live tree.';
 }
 
 function renderTurnstile() {
@@ -1525,10 +1999,10 @@ function buildIssueBody(payload) {
     '> If a submitted VET or RAT does not yet exist, the protected updater can create that person’s row/card and reciprocate the new relationship. Existing related profiles are not silently overwritten.',
   ];
   if (payload.self.marriedName) lines.push(`**Married name:** ${payload.self.marriedName}`);
-  if (payload.vet) lines.push(`**VET:** ${payload.vet.name} (${payload.vet.year}, ${sectionLabel(payload.vet.section)})`);
+  if (payload.vet) lines.push(`**VET:** ${payload.vet.name} (${payload.vet.year}) (${sectionLabel(payload.vet.section)})`);
   if (payload.rats.length) {
     lines.push('', '## RATs');
-    payload.rats.forEach((rat) => lines.push(`- ${rat.name} (${rat.year}, ${sectionLabel(rat.section)})`));
+    payload.rats.forEach((rat) => lines.push(`- ${rat.name} (${rat.year}) (${sectionLabel(rat.section)})`));
   }
   if (payload.favoriteTechBandMemory) lines.push('', '## Favorite Tech Band Memory', '', payload.favoriteTechBandMemory);
   if (Object.keys(payload.notes).length) {
@@ -1607,6 +2081,10 @@ function bindEvents() {
   qa('input[name="legacy-system"]').forEach((input) => input.addEventListener('change', updateRelationshipVisibility));
   q('#self-rat-year').addEventListener('change', updateRelationshipVisibility);
   q('#add-section').addEventListener('click', () => addSectionMembership());
+  q('#add-leadership').addEventListener('click', () => addLeadershipEntry());
+  qa('input[name="band-club-leadership"]').forEach((input) => input.addEventListener('change', updateBandClubLeadershipVisibility));
+  q('#add-band-club-leadership').addEventListener('click', () => addBandClubLeadershipEntry());
+  q('#position-year').addEventListener('input', updateCombinedPositionYearPreview);
   q('#self-given').addEventListener('input', updateExistingSelfWarning);
   q('#self-family').addEventListener('input', updateExistingSelfWarning);
 
@@ -1647,6 +2125,8 @@ async function main() {
     changedLastNameUpdated();
     updateNicknameVisibility();
     updateOtherGtEnsembleVisibility();
+    updateBandClubLeadershipVisibility();
+    updateCombinedPositionYearPreview();
     refreshSectionMemberships();
     updateRelationshipVisibility();
     setStep(1, { scroll: false });

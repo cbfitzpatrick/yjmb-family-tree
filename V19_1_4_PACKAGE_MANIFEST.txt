@@ -1,0 +1,17 @@
+YJMB Family Tree v19.1.4
+
+Purpose
+- Prevent avoidable protected-review holds for malformed or unconfirmed VET/RAT identities.
+- Restore a hybrid Add Yourself leadership questionnaire + free-form Position and Year workflow.
+- Show leadership-position icons in Add Yourself preview while preserving Position and Year as the single stored field.
+- Fix existing RAT/VET candidate labels that could display as ?? despite a known person/year.
+- Keep one-sided relationship-review terminology and repair tools Admin-only while confirmed VET claims reciprocate automatically.
+- Allow v19.1.3 Leadership Taxonomy Admin saves through the Worker.
+- Harden the protected workflow against the transient GitHub Pages artifact handoff failure seen in Actions run 45483045980.
+
+No workbook, encrypted tree payload, plaintext tree data, secrets, or Markdown documentation is included.
+
+After copying this patch into the repository, run:
+  powershell -ExecutionPolicy Bypass -File .\V19_1_4_APPLY_REPO_PATCHES.ps1
+
+The helper intentionally patches the repository's current Worker and workflow files because those files are deployment-specific and were not copied into this patch from an older baseline.
