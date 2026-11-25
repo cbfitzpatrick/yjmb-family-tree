@@ -9,6 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
   pages: write
   id-token: write
@@ -21,7 +22,7 @@ jobs:
   deploy:
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deployment_primary.outputs.page_url || steps.deployment_retry.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -32,6 +33,35 @@ jobs:
         uses: actions/upload-pages-artifact@v4
         with:
           path: docs
+      - name: Wait for Pages artifact metadata
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for attempt in $(seq 1 12); do
+            count="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts" --jq '[.artifacts[] | select(.name == "github-pages")] | length')"
+            if [ "$count" -ge 1 ]; then
+              echo "github-pages artifact is visible to the Actions API."
+              exit 0
+            fi
+      
+            echo "github-pages artifact not visible yet (attempt $attempt/12). Waiting 5 seconds..."
+            sleep 5
+          done
+      
+          echo "::error::github-pages was uploaded but did not become visible to the Actions API within 60 seconds."
+          exit 1
+      
       - name: Deploy GitHub Pages
-        id: deployment
+        id: deployment_primary
+        continue-on-error: true
+        uses: actions/deploy-pages@v4
+      
+      - name: Wait before Pages deployment retry
+        if: steps.deployment_primary.outcome == 'failure'
+        run: sleep 15
+      
+      - name: Retry Deploy GitHub Pages
+        id: deployment_retry
+        if: steps.deployment_primary.outcome == 'failure'
         uses: actions/deploy-pages@v4
