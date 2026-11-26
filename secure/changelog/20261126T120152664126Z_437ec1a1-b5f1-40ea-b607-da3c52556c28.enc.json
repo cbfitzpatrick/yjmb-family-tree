@@ -1,0 +1,6 @@
+{
+  "format": "yjmb-secure-submission-v1",
+  "cipher": "AES-256-GCM",
+  "iv": "tb4odiFzHDJA63OH",
+  "ciphertext": "RhnO/mYfGKxkjB81yJmAV3+KDLSslBpvbqF8awfXAcNZjr/0bnrJFPdt8dj/D7+kuWbojJS6Aj6JLptHyoD2p8adTdY0gcvmsbfzCpEAtag1krYr8SoW6m5c6DIsBrejcHxTnAHb+tyP/cbdxBMKk4IvYBt+hbHXgyOpZ3tBnI3IC0X9uXftFSJ4ZdsPQbu3cL8zfUN/et0Ii7s3k1CPt3aNYa+euDlOY4lOO6wxvu3GhYpFbU4T0r3ebZrANyIDUPUGuTceXPoihxB2EV5v+ufJXbBmgd9c6XVSe8T3/XTKYfO5c55uoeew2joGI4NHrE7+7rpAoM+6l4EtwZ+2wYI4fNVjgcZi35dV5pafkMrO1APszvrT0AIP7k0V31PVPi3/T7Tufwt5xp14DAyq9zO7Gj30fR3hNaewSurVS6M4rpoVAwI4LBNQNSRmW8/R9mbCqpt4ctWPB1LQiSqXmQUnqN2xbAl4pxkuDx/RNXDrhnjaz2mw1v+Fa1HExdjBxVxZViyc/5HXIwmh2XF9cfo3gu17U6khx/cN"
+}
